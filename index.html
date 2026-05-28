@@ -142,8 +142,15 @@
                         </table>
                     </div>
                     
-                    <div style="margin-top: 20px; display: flex; justify-content: flex-start;">
-                        <button class="btn btn-accent" onclick="loadDrugsToBuyPage()">📋 Drugs to buy</button>
+                    <div style="margin-top: 25px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 15px; border-top: 1px solid var(--border-line); padding-top: 20px;">
+                        <div>
+                            <button class="btn btn-accent" onclick="loadDrugsToBuyPage()">📋 Drugs to buy</button>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" style="background:#cbd5e1;" onclick="exportDatabaseFileToFileSystem()">💾 Export Data Backup</button>
+                            <button class="btn btn-secondary" onclick="document.getElementById('import-file-element').click()">🔌 Import Data Backup</button>
+                            <input type="file" id="import-file-element" style="display: none;" accept=".sqlite,.db" onchange="importDatabaseFileFromFileSystem(event)">
+                        </div>
                     </div>
                 </div>
             </div>
