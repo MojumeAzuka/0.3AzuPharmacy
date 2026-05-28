@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AZU PHARMACY - Management System</title>
+    <title>AZU PHARMACY - Cloud Connected</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
     <nav class="navbar">
-        <div class="nav-logo">AZU PHARMACY 💊</div>
+        <div class="nav-logo">AZU PHARMACY 💊 <span style="font-size: 0.7rem; color: #4ade80;">● CLOUD ACTIVE</span></div>
         <div class="nav-links">
             <button id="nav-sales" class="active" onclick="switchMainView('sales')">Sales Counter</button>
             <button id="nav-inventory" onclick="switchMainView('inventory')">Inventory</button>
@@ -28,7 +28,6 @@
 
             <div id="sales-subpage-pos">
                 <div class="sales-grid">
-                    
                     <div class="card search-inventory-card">
                         <h1 class="heading-search-inventory">Search Inventory</h1>
                         <h2 class="heading-search-drug">Search Drug Name</h2>
@@ -57,7 +56,6 @@
                         
                         <div class="cart-checkout-section">
                             <h3>Total Bill: ₦<span id="cart-grand-total">0.00</span></h3>
-                            
                             <div class="form-group" style="margin-top:10px;">
                                 <label for="payment-mode">Payment Method</label>
                                 <select id="payment-mode" onchange="toggleSplitPaymentFields()">
@@ -77,7 +75,6 @@
                                     <input type="number" id="split-card-amount" readonly value="0">
                                 </div>
                             </div>
-
                             <button class="btn btn-success btn-block" onclick="processCheckout()">Process Sale & Print Receipt</button>
                         </div>
                     </div>
@@ -87,20 +84,10 @@
             <div id="sales-subpage-daily" class="view-hidden">
                 <div class="sales-day-layout">
                     <div class="sales-day-list" id="daily-invoices-scroll-area"></div>
-                    
                     <div class="sales-day-summary-bar">
-                        <div class="summary-portion">
-                            <label>Starting Cash Float</label>
-                            <span class="summary-value">₦<span id="summary-start-cash">50,000.00</span></span>
-                        </div>
-                        <div class="summary-portion">
-                            <label>Cash Sales Today</label>
-                            <span class="summary-value text-success">₦<span id="summary-cash-sales">0.00</span></span>
-                        </div>
-                        <div class="summary-portion">
-                            <label>Digital/Card Sales Today</label>
-                            <span class="summary-value text-accent">₦<span id="summary-digital-sales">0.00</span></span>
-                        </div>
+                        <div class="summary-portion"><label>Starting Cash Float</label><span class="summary-value">₦<span id="summary-start-cash">50,000.00</span></span></div>
+                        <div class="summary-portion"><label>Cash Sales Today</label><span class="summary-value text-success">₦<span id="summary-cash-sales">0.00</span></span></div>
+                        <div class="summary-portion"><label>Digital/Card Sales Today</label><span class="summary-value text-accent">₦<span id="summary-digital-sales">0.00</span></span></div>
                     </div>
                 </div>
             </div>
@@ -113,9 +100,7 @@
             </div>
         </section>
 
-
         <section id="view-inventory" class="main-view view-hidden">
-            
             <div id="subpage-drug-list">
                 <div class="inventory-header-actions">
                     <div class="search-box-wrapper">
@@ -141,67 +126,36 @@
                             <tbody id="inventory-main-table-body"></tbody>
                         </table>
                     </div>
-                    
-                    <div style="margin-top: 25px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 15px; border-top: 1px solid var(--border-line); padding-top: 20px;">
-                        <div>
-                            <button class="btn btn-accent" onclick="loadDrugsToBuyPage()">📋 Drugs to buy</button>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" style="background:#cbd5e1;" onclick="exportDatabaseFileToFileSystem()">💾 Export Data Backup</button>
-                            <button class="btn btn-secondary" onclick="document.getElementById('import-file-element').click()">🔌 Import Data Backup</button>
-                            <input type="file" id="import-file-element" style="display: none;" accept=".sqlite,.db" onchange="importDatabaseFileFromFileSystem(event)">
-                        </div>
+                    <div style="margin-top: 25px; border-top: 1px solid var(--border-line); padding-top: 20px;">
+                        <button class="btn btn-accent" onclick="loadDrugsToBuyPage()">📋 Drugs to buy</button>
                     </div>
                 </div>
             </div>
 
             <div id="subpage-drugs-to-buy" class="card view-hidden">
                 <h2>Procurement List (Out of Stock / Low Stock)</h2>
-                <p style="margin-bottom: 20px; color: #64748b;">The following items have dropped below their safety threshold. You can edit procurement targets inline.</p>
                 <div class="table-container" style="margin-bottom: 20px;">
                     <table>
                         <thead>
-                            <tr>
-                                <th>Drug Name</th>
-                                <th>Current Stock</th>
-                                <th>Min Threshold</th>
-                                <th style="width: 180px;">Quantity to Procure</th>
-                            </tr>
+                            <tr><th>Drug Name</th><th>Current Stock</th><th>Min Threshold</th><th style="width: 180px;">Quantity to Procure</th></tr>
                         </thead>
                         <tbody id="procurement-table-body"></tbody>
                     </table>
                 </div>
-                <div class="action-footer-buttons">
-                    <button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Go Back</button>
-                </div>
+                <div class="action-footer-buttons"><button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Go Back</button></div>
             </div>
 
             <div id="subpage-add-drug" class="card view-hidden">
                 <h2>Add New Drug</h2>
                 <form id="add-drug-form" onsubmit="executeAddDrug(event)">
-                    <div class="form-group">
-                        <label>Name</label>
-                        <input type="text" id="add-field-name" placeholder="Enter drug name" required>
+                    <div class="form-group"><label>Name</label><input type="text" id="add-field-name" required></div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Cost Price (₦)</label><input type="number" step="0.01" id="add-field-cost" required></div>
+                        <div class="form-group"><label>Selling Price (₦)</label><input type="number" step="0.01" id="add-field-selling" required></div>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label>Cost Price (₦)</label>
-                            <input type="number" step="0.01" id="add-field-cost" placeholder="0.00" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Selling Price (₦)</label>
-                            <input type="number" step="0.01" id="add-field-selling" placeholder="0.00" required>
-                        </div>
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Units Available in Inventory</label>
-                            <input type="number" id="add-field-qty" placeholder="0" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Minimum Units Available Before Flagging for Restock</label>
-                            <input type="number" id="add-field-min" placeholder="0" required>
-                        </div>
+                        <div class="form-group"><label>Units Available</label><input type="number" id="add-field-qty" required></div>
+                        <div class="form-group"><label>Min Threshold</label><input type="number" id="add-field-min" required></div>
                     </div>
                     <div class="action-footer-buttons">
                         <button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Go Back</button>
@@ -212,62 +166,30 @@
 
             <div id="subpage-view-drug" class="card view-hidden">
                 <h2>View Drug Details</h2>
-                <div class="form-group">
-                    <label>Name</label>
-                    <input type="text" id="view-field-name" readonly>
+                <div class="form-group"><label>Name</label><input type="text" id="view-field-name" readonly></div>
+                <div class="form-grid">
+                    <div class="form-group"><label>Cost Price</label><input type="text" id="view-field-cost" readonly></div>
+                    <div class="form-group"><label>Selling Price</label><input type="text" id="view-field-selling" readonly></div>
                 </div>
                 <div class="form-grid">
-                    <div class="form-group">
-                        <label>Cost Price</label>
-                        <input type="text" id="view-field-cost" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label>Selling Price</label>
-                        <input type="text" id="view-field-selling" readonly>
-                    </div>
+                    <div class="form-group"><label>Units Available</label><input type="text" id="view-field-qty" readonly></div>
+                    <div class="form-group"><label>Min Threshold</label><input type="text" id="view-field-min" readonly></div>
                 </div>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Units Available in Inventory</label>
-                        <input type="text" id="view-field-qty" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label>Minimum Units Available Before Flagging for Restock</label>
-                        <input type="text" id="view-field-min" readonly>
-                    </div>
-                </div>
-                <div class="action-footer-buttons">
-                    <button type="button" class="btn btn-secondary btn-block" onclick="routeToSubpage('drug-list')">Go Back</button>
-                </div>
+                <div class="action-footer-buttons"><button type="button" class="btn btn-secondary btn-block" onclick="routeToSubpage('drug-list')">Go Back</button></div>
             </div>
 
             <div id="subpage-update-drug" class="card view-hidden">
                 <h2>Update Drug Details</h2>
                 <form id="update-drug-form" onsubmit="executeUpdateDrug(event)">
                     <input type="hidden" id="update-field-id">
-                    <div class="form-group">
-                        <label>Name</label>
-                        <input type="text" id="update-field-name" required>
+                    <div class="form-group"><label>Name</label><input type="text" id="update-field-name" required></div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Cost Price</label><input type="number" step="0.01" id="update-field-cost" required></div>
+                        <div class="form-group"><label>Selling Price</label><input type="number" step="0.01" id="update-field-selling" required></div>
                     </div>
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label>Cost Price</label>
-                            <input type="number" step="0.01" id="update-field-cost" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Selling Price</label>
-                            <input type="number" step="0.01" id="update-field-selling" required>
-                        </div>
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Units Available in Inventory</label>
-                            <input type="number" id="update-field-qty" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Minimum Units Available Before Flagging for Restock</label>
-                            <input type="number" id="update-field-min" required>
-                        </div>
+                        <div class="form-group"><label>Units Available</label><input type="number" id="update-field-qty" required></div>
+                        <div class="form-group"><label>Min Threshold</label><input type="number" id="update-field-min" required></div>
                     </div>
                     <div class="action-footer-buttons">
                         <button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Cancel</button>
@@ -278,11 +200,7 @@
 
             <div id="subpage-delete-drug" class="card view-hidden" style="border: 2px solid var(--danger-color);">
                 <h2 style="color: var(--danger-color);">Delete Drug Records Page</h2>
-                <p style="margin-bottom: 20px;">Are you sure you want to completely remove this drug from the app database?</p>
-                <div class="form-group">
-                    <label>Drug Record Set for Removal</label>
-                    <input type="text" id="delete-display-name" readonly style="font-weight:bold; color:var(--danger-color);">
-                </div>
+                <div class="form-group"><label>Drug Record Set for Removal</label><input type="text" id="delete-display-name" readonly style="font-weight:bold; color:var(--danger-color);"></div>
                 <input type="hidden" id="delete-field-id">
                 <div class="action-footer-buttons">
                     <button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Cancel</button>
@@ -290,7 +208,6 @@
                 </div>
             </div>
         </section>
-
 
         <section id="view-finance" class="main-view view-hidden">
             <div class="sub-tab-nav">
@@ -300,14 +217,8 @@
 
             <div id="finance-subpage-sales">
                 <div class="grid-three-col">
-                    <div class="card card-summary-stat">
-                        <h3>Total Cash Sales Today</h3>
-                        <p class="stat-large text-success">₦<span id="fin-today-cash">0.00</span></p>
-                    </div>
-                    <div class="card card-summary-stat">
-                        <h3>Total Digital Sales Today</h3>
-                        <p class="stat-large text-accent">₦<span id="fin-today-digital">0.00</span></p>
-                    </div>
+                    <div class="card card-summary-stat"><h3>Total Cash Sales Today</h3><p class="stat-large text-success">₦<span id="fin-today-cash">0.00</span></p></div>
+                    <div class="card card-summary-stat"><h3>Total Digital Sales Today</h3><p class="stat-large text-accent">₦<span id="fin-today-digital">0.00</span></p></div>
                 </div>
             </div>
 
@@ -315,15 +226,11 @@
                 <div class="finance-range-selectors card">
                     <button class="btn btn-secondary active-range-btn" id="btn-range-day" onclick="loadProfitReport('day')">Profit For The Day So Far</button>
                     <button class="btn btn-secondary" id="btn-range-2years" onclick="toggleRangeSelectionInputs()">Custom Date Range Selector</button>
-                    
                     <div id="custom-range-inputs" class="view-hidden" style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
-                        <input type="date" id="profit-start-date">
-                        <span>to</span>
-                        <input type="date" id="profit-end-date">
+                        <input type="date" id="profit-start-date"><span>to</span><input type="date" id="profit-end-date">
                         <button class="btn btn-primary" onclick="loadProfitReport('range')">Calculate Range Profit</button>
                     </div>
                 </div>
-                
                 <div class="grid-three-col">
                     <div class="card card-summary-stat" style="border-top: 4px solid var(--primary-accent);">
                         <h3 id="profit-title-label">Profit For The Day So Far</h3>

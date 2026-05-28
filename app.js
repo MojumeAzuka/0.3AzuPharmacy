@@ -1,244 +1,64 @@
-let azuDatabase;
+// Paste your Supabase credentials here
+const SUPABASE_URL = "https://jziyplltccxlvjltlbkz.supabase.co/rest/v1/"; 
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6aXlwbGx0Y2N4bHZqbHRsYmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NzkyMTAsImV4cCI6MjA5NTU1NTIxMH0.IC8SEyV7M2c097ZYGYIvmVc0-GFt1mLslIHCt0G56Tk";
+
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 let checkoutCart = [];
 const STARTING_CASH_FLOAT = 50000.00;
-const INDEXEDDB_STORAGE_KEY = "azu_pharmacy_persistent_db";
 
-// Initialize SQL WebAssembly Engine and handle Local Sync restoration layers
-initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` }).then(async SQL => {
-    
-    // Check if an existing database payload resides inside the browser's IndexedDB partition
-    const serializedExistingDatabase = await restoreDatabaseStateFromBrowserStorage();
-    
-    if (serializedExistingDatabase) {
-        // Hydrate running memory using the user's permanent database array
-        azuDatabase = new SQL.Database(serializedExistingDatabase);
-        console.log("Successfully restored database state from browser storage partition.");
-    } else {
-        // Setup a blank canvas configuration if this is the first execution on this device
-        azuDatabase = new SQL.Database();
-        buildDatabaseStructures();
-        generateMockPharmacyStock(); 
-        await saveActiveDatabaseStateToBrowserStorage();
-    }
-    
+// Initialize app data from cloud database instances instantly on app mount
+document.addEventListener("DOMContentLoaded", () => {
     refreshAllViewsData();
-}).catch(error => console.error("Critical Database Engine initialization broken: ", error));
+    setTimeout(() => { if(document.getElementById('sales-search')) document.getElementById('sales-search').focus(); }, 100);
+});
 
-function buildDatabaseStructures() {
-    azuDatabase.run(`
-        CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            cost_price REAL NOT NULL,
-            selling_price REAL NOT NULL,
-            quantity INTEGER NOT NULL,
-            min_quantity INTEGER NOT NULL
-        );
-    `);
-    azuDatabase.run(`
-        CREATE TABLE IF NOT EXISTS sales_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sale_timestamp TEXT NOT NULL,
-            items_summary TEXT NOT NULL,
-            total_billed REAL NOT NULL,
-            cash_paid REAL NOT NULL,
-            card_paid REAL NOT NULL,
-            total_cost REAL NOT NULL,
-            total_profit REAL NOT NULL
-        );
-    `);
-}
-
-function generateMockPharmacyStock() {
-    const baselineItems = [
-        ['Paracetamol 500mg Tablets', 120.00, 200.00, 1500, 200],
-        ['Amoxicillin 500mg Capsules', 950.00, 1500.00, 45, 100], 
-        ['Ibuprofen 400mg Tabs', 220.00, 400.00, 800, 150],
-        ['Vitamin C Soluble 1000mg', 600.00, 1000.00, 12, 100],  
-        ['Metformin 500mg Tablets', 1100.00, 1800.00, 95, 80]
-    ];
-    const stmt = azuDatabase.prepare("INSERT INTO inventory (name, cost_price, selling_price, quantity, min_quantity) VALUES (?, ?, ?, ?, ?)");
-    baselineItems.forEach(row => stmt.run(row));
-    stmt.free();
-}
-
-// --- INDEXEDDB FRONTEND PERSISTENCE LAYER FUNCTIONS ---
-
-function saveActiveDatabaseStateToBrowserStorage() {
-    return new Promise((resolve, reject) => {
-        // Export running database into an immutable binary Uint8Array stream
-        const binaryDatabaseState = azuDatabase.export();
-        
-        // Open low-level connection pipeline into browser's IndexedDB storage
-        const request = indexedDB.open("AzuPharmacyStorageContext", 1);
-        
-        request.onupgradeneeded = function(e) {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains("binaries")) {
-                db.createObjectStore("binaries");
-            }
-        };
-        
-        request.onsuccess = function(e) {
-            const db = e.target.result;
-            const transaction = db.transaction(["binaries"], "readwrite");
-            const store = transaction.objectStore("binaries");
-            
-            // Overwrite binary records with current state
-            const putRequest = store.put(binaryDatabaseState, INDEXEDDB_STORAGE_KEY);
-            
-            putRequest.onsuccess = () => resolve(true);
-            putRequest.onerror = (err) => reject(err);
-        };
-        
-        request.onerror = (err) => reject(err);
-    });
-}
-
-function restoreDatabaseStateFromBrowserStorage() {
-    return new Promise((resolve) => {
-        const request = indexedDB.open("AzuPharmacyStorageContext", 1);
-        
-        request.onupgradeneeded = function(e) {
-            e.target.result.createObjectStore("binaries");
-        };
-        
-        request.onsuccess = function(e) {
-            const db = e.target.result;
-            const transaction = db.transaction(["binaries"], "readonly");
-            const store = transaction.objectStore("binaries");
-            const getRequest = store.get(INDEXEDDB_STORAGE_KEY);
-            
-            getRequest.onsuccess = function() {
-                resolve(getRequest.result ? getRequest.result : null);
-            };
-            getRequest.onerror = () => resolve(null);
-        };
-        
-        request.onerror = () => resolve(null);
-    });
-}
-
-// Data Utility File System Handlers
-function exportDatabaseFileToFileSystem() {
-    const binaryData = azuDatabase.export();
-    const blobObject = new Blob([binaryData], { type: "application/octet-stream" });
-    const downloadAnchor = document.createElement("a");
-    
-    downloadAnchor.href = URL.createObjectURL(blobObject);
-    downloadAnchor.download = `azu_pharmacy_backup_${new Date().toISOString().slice(0,10)}.sqlite`;
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    document.body.removeChild(downloadAnchor);
-}
-
-function importDatabaseFileFromFileSystem(event) {
-    const targetedFile = event.target.files[0];
-    if (!targetedFile) return;
-
-    const fileReader = new FileReader();
-    fileReader.onload = async function(e) {
-        try {
-            const bufferArray = new Uint8Array(e.target.result);
-            // Re-instantiate global database context from the imported binary file
-            azuDatabase = new initSqlJs.BufferPassedDatabase ? new initSqlJs.Database(bufferArray) : Object.assign(azuDatabase, new (await initSqlJs()).Database(bufferArray));
-            
-            await saveActiveDatabaseStateToBrowserStorage();
-            refreshAllViewsData();
-            alert("Database backup file successfully imported and activated.");
-        } catch(err) {
-            alert("Critical Error: Failed to parse uploaded database file.");
-            console.error(err);
-        }
-    };
-    fileReader.readAsArrayBuffer(targetedFile);
-}
-
-// --- STANDARD WORKSPACE UI HANDLERS ---
-
-function refreshAllViewsData() {
-    renderInventoryTable();
-    renderDailySalesHistoryPage();
-    renderFinancialDashboardSummary();
-}
-
-function switchMainView(targetView) {
-    destroyExistingPortalDropdowns();
-    document.querySelectorAll('.main-view').forEach(view => view.classList.add('view-hidden'));
-    document.querySelectorAll('.navbar .nav-links button').forEach(btn => btn.classList.remove('active'));
-
-    document.getElementById(`view-${targetView}`).classList.remove('view-hidden');
-    document.getElementById(`nav-${targetView}`).classList.add('active');
-
-    if (targetView === 'inventory') routeToSubpage('drug-list');
-    else if (targetView === 'sales') switchSalesSubTab('pos');
-    else if (targetView === 'finance') switchFinanceSubTab('sales');
-}
-
-function switchSalesSubTab(subTab) {
-    document.getElementById('sales-subpage-pos').classList.add('view-hidden');
-    document.getElementById('sales-subpage-daily').classList.add('view-hidden');
-    document.getElementById('tab-pos').classList.remove('sub-active');
-    document.getElementById('tab-daily-sales').classList.remove('sub-active');
-
-    document.getElementById(`sales-subpage-${subTab}`).classList.remove('view-hidden');
-    document.getElementById(`tab-${subTab === 'pos' ? 'pos' : 'daily-sales'}`).classList.add('sub-active');
-    
-    if(subTab === 'pos') setTimeout(() => document.getElementById('sales-search').focus(), 50);
-    else if(subTab === 'daily') renderDailySalesHistoryPage();
-}
-
-function switchFinanceSubTab(subTab) {
-    document.getElementById('finance-subpage-sales').classList.add('view-hidden');
-    document.getElementById('finance-subpage-profit').classList.add('view-hidden');
-    document.getElementById('tab-fin-sales').classList.remove('sub-active');
-    document.getElementById('tab-fin-profit').classList.remove('sub-active');
-
-    document.getElementById(`finance-subpage-${subTab}`).classList.remove('view-hidden');
-    document.getElementById(`tab-fin-${subTab}`).classList.add('sub-active');
-
-    if(subTab === 'sales') renderFinancialDashboardSummary();
-    if(subTab === 'profit') loadProfitReport('day');
-}
-
-function routeToSubpage(subpageId) {
-    destroyExistingPortalDropdowns();
-    const listSubpages = ['subpage-drug-list', 'subpage-add-drug', 'subpage-view-drug', 'subpage-update-drug', 'subpage-delete-drug', 'subpage-drugs-to-buy'];
-    listSubpages.forEach(id => document.getElementById(id).classList.add('view-hidden'));
-
-    document.getElementById(`subpage-${subpageId}`).classList.remove('view-hidden');
-    if (subpageId === 'drug-list') renderInventoryTable();
-}
-
-// --- DATABASE TRANSACTIONS MODIFIERS (Saves to state asynchronously on complete) ---
+// --- CLOUD WRITE AND RE-MUTATION LAYERS ---
 
 async function executeAddDrug(event) {
     event.preventDefault();
-    azuDatabase.run("INSERT INTO inventory (name, cost_price, selling_price, quantity, min_quantity) VALUES (?, ?, ?, ?, ?)", 
-        [document.getElementById('add-field-name').value, parseFloat(document.getElementById('add-field-cost').value), parseFloat(document.getElementById('add-field-selling').value), parseInt(document.getElementById('add-field-qty').value), parseInt(document.getElementById('add-field-min').value)]);
-    
+    const payload = {
+        name: document.getElementById('add-field-name').value,
+        cost_price: parseFloat(document.getElementById('add-field-cost').value),
+        selling_price: parseFloat(document.getElementById('add-field-selling').value),
+        quantity: parseInt(document.getElementById('add-field-qty').value),
+        min_quantity: parseInt(document.getElementById('add-field-min').value)
+    };
+
+    const { error } = await _supabase.from('inventory').insert([payload]);
+    if (error) return alert("Cloud write error: " + error.message);
+
     document.getElementById('add-drug-form').reset();
-    await saveActiveDatabaseStateToBrowserStorage();
     routeToSubpage('drug-list');
 }
 
 async function executeUpdateDrug(event) {
     event.preventDefault();
-    azuDatabase.run("UPDATE inventory SET name=?, cost_price=?, selling_price=?, quantity=?, min_quantity=? WHERE id=?", 
-        [document.getElementById('update-field-name').value, parseFloat(document.getElementById('update-field-cost').value), parseFloat(document.getElementById('update-field-selling').value), parseInt(document.getElementById('update-field-qty').value), parseInt(document.getElementById('update-field-min').value), document.getElementById('update-field-id').value]);
-    
-    await saveActiveDatabaseStateToBrowserStorage();
+    const id = document.getElementById('update-field-id').value;
+    const payload = {
+        name: document.getElementById('update-field-name').value,
+        cost_price: parseFloat(document.getElementById('update-field-cost').value),
+        selling_price: parseFloat(document.getElementById('update-field-selling').value),
+        quantity: parseInt(document.getElementById('update-field-qty').value),
+        min_quantity: parseInt(document.getElementById('update-field-min').value)
+    };
+
+    const { error } = await _supabase.from('inventory').update(payload).eq('id', id);
+    if (error) return alert("Cloud update failed: " + error.message);
+
     routeToSubpage('drug-list');
 }
 
 async function executeDeleteDrug() {
-    azuDatabase.run("DELETE FROM inventory WHERE id = ?", [document.getElementById('delete-field-id').value]);
-    await saveActiveDatabaseStateToBrowserStorage();
+    const id = document.getElementById('delete-field-id').value;
+    const { error } = await _supabase.from('inventory').delete().eq('id', id);
+    if (error) return alert("Cloud delete execution rejected: " + error.message);
+
     routeToSubpage('drug-list');
 }
 
 async function processCheckout() {
-    if(checkoutCart.length === 0) return alert("Checkout rejected: Shopping basket is empty.");
+    if (checkoutCart.length === 0) return alert("Checkout rejected: Shopping basket empty.");
     const grandTotal = parseFloat(document.getElementById('cart-grand-total').innerText);
     const paymentMode = document.getElementById('payment-mode').value;
     
@@ -251,102 +71,223 @@ async function processCheckout() {
     }
 
     let summaryText = '', totalCost = 0;
-    checkoutCart.forEach(item => {
-        azuDatabase.run("UPDATE inventory SET quantity = quantity - ? WHERE id = ?", [item.currentQty, item.id]);
+    
+    // Atomically decrement stock numbers for each item purchased in cloud matrix
+    for (let item of checkoutCart) {
         summaryText += `${item.name} (x${item.currentQty}), `;
         totalCost += (item.costPrice * item.currentQty);
-    });
 
-    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    azuDatabase.run("INSERT INTO sales_history VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)",
-        [timestamp, summaryText.slice(0, -2), grandTotal, cashComponent, cardComponent, totalCost, (grandTotal - totalCost)]);
+        const { error } = await _supabase.rpc('increment', { row_id: item.id, x: -item.currentQty }); 
+        if(error) {
+            // Direct update fallback if RPC helper is missing in project instance
+            await _supabase.from('inventory').update({ quantity: item.maxLimit - item.currentQty }).eq('id', item.id);
+        }
+    }
+
+    const salePayload = {
+        items_summary: summaryText.slice(0, -2),
+        total_billed: grandTotal,
+        cash_paid: cashComponent,
+        card_paid: cardComponent,
+        total_cost: totalCost,
+        total_profit: (grandTotal - totalCost)
+    };
+
+    const { error: invoiceError } = await _supabase.from('sales_history').insert([salePayload]);
+    if (invoiceError) return alert("Invoice processing error: " + invoiceError.message);
 
     document.getElementById('receipt-print-data').innerHTML = `
         <div class="receipt-paper-view">
             <h3>AZU PHARMACY RECEIPT</h3>
-            <p>Date: ${timestamp}</p>
+            <p>Date: ${new Date().toLocaleString()}</p>
             <p>Items: ${summaryText.slice(0, -2)}</p>
             <h4>Total Paid: ₦${grandTotal.toFixed(2)}</h4>
-            <p style="font-size:0.8rem; color:#475569;">Cash: ₦${cashComponent.toFixed(2)} | Card: ₦${cardComponent.toFixed(2)}</p>
-        </div>
-    `;
+            <p style="font-size:0.8rem;">Cash: ₦${cashComponent.toFixed(2)} | Card: ₦${cardComponent.toFixed(2)}</p>
+        </div>`;
     
     document.getElementById('receipt-modal').classList.add('open');
     checkoutCart = [];
-    
-    await saveActiveDatabaseStateToBrowserStorage();
-    refreshCartUI(); 
+    refreshCartUI();
     refreshAllViewsData();
 }
 
-// --- DATA READ OPERATIONS ---
+// --- CLOUD GLOBAL FETCH READ OPERATIONS ---
 
-function renderInventoryTable() {
+async function renderInventoryTable() {
     const searchFilter = document.getElementById('inventory-search-input').value;
     const tableBody = document.getElementById('inventory-main-table-body');
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Syncing global records...</td></tr>';
+
+    let query = _supabase.from('inventory').select('*').order('name', { ascending: true });
+    if (searchFilter) query = query.ilike('name', `%${searchFilter}%`);
+
+    const { data: drugs, error } = await query;
+    if (error) return console.error(error);
+
     tableBody.innerHTML = '';
-
-    let sql = "SELECT * FROM inventory";
-    let params = [];
-    if (searchFilter) { sql += " WHERE name LIKE ?"; params.push(`%${searchFilter}%`); }
-
-    const stmt = azuDatabase.prepare(sql);
-    stmt.bind(params);
-
-    while (stmt.step()) {
-        const drug = stmt.getAsObject();
-        let restockCellContent = drug.quantity < drug.min_quantity ? `<span class="badge-danger-alert">Restock needed</span>` : '';
+    drugs.forEach(drug => {
+        let restockCellContent = drug.quantity < drug.min_quantity ? `<span class="badge-danger-alert" style="color:red; font-weight:bold;">Restock needed</span>` : '';
         tableBody.innerHTML += `
             <tr>
-                <td><div class="drug-name-click" onclick="spawnPortalDropdown(event, ${drug.id})">${drug.name}</div></td>
+                <td><div class="drug-name-click" style="cursor:pointer; color:#2563eb;" onclick="spawnPortalDropdown(event, ${drug.id})">${drug.name}</div></td>
                 <td>₦${drug.cost_price.toFixed(2)}</td>
                 <td>₦${drug.selling_price.toFixed(2)}</td>
                 <td><strong>${drug.quantity}</strong></td>
                 <td>${restockCellContent}</td>
             </tr>`;
-    }
-    stmt.free();
+    });
 }
 
-function loadDrugsToBuyPage() {
+async function loadDrugsToBuyPage() {
     const tbody = document.getElementById('procurement-table-body');
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Checking inventories...</td></tr>';
+    
+    const { data: lowStockDrugs, error } = await _supabase.from('inventory').select('*').lt('quantity', _supabase.raw('min_quantity'));
+    
+    // Raw filter backup check
+    const { data: allItems } = await _supabase.from('inventory').select('*');
+    const filtered = allItems.filter(d => d.quantity < d.min_quantity);
+
     tbody.innerHTML = '';
-    const stmt = azuDatabase.prepare("SELECT * FROM inventory WHERE quantity < min_quantity");
-    let count = 0;
-    while (stmt.step()) {
-        count++;
-        const drug = stmt.getAsObject();
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#64748b;">All stocks healthy!</td></tr>`;
+        return routeToSubpage('drugs-to-buy');
+    }
+
+    filtered.forEach(drug => {
         tbody.innerHTML += `
             <tr>
                 <td><strong>${drug.name}</strong></td>
-                <td><span style="color:var(--danger-color); font-weight:bold;">${drug.quantity}</span></td>
+                <td><span style="color:red; font-weight:bold;">${drug.quantity}</span></td>
                 <td>${drug.min_quantity}</td>
-                <td><input type="number" value="${drug.min_quantity - drug.quantity}" min="1" style="padding: 6px 10px; border-radius:6px;"></td>
+                <td><input type="number" value="${drug.min_quantity - drug.quantity}" min="1" style="padding:6px;"></td>
             </tr>`;
-    }
-    stmt.free();
-    if (count === 0) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b; padding:30px;">All stocks healthy! No drugs are currently flagged for restock.</td></tr>`;
+    });
     routeToSubpage('drugs-to-buy');
 }
 
-function searchSalesCounter() {
+async function searchSalesCounter() {
     const inputQuery = document.getElementById('sales-search').value;
     const dropContainer = document.getElementById('sales-dropdown-results');
     dropContainer.innerHTML = '';
     if (!inputQuery) return;
 
-    const stmt = azuDatabase.prepare("SELECT * FROM inventory WHERE name LIKE ? ORDER BY name ASC");
-    stmt.bind([`%${inputQuery}%`]);
-    while (stmt.step()) {
-        const drug = stmt.getAsObject();
-        const item = document.createElement('div');
-        item.className = 'dropdown-entry-item';
-        item.innerHTML = `💊 ${drug.name} — ₦${drug.selling_price.toFixed(2)}`;
-        item.onclick = () => { addItemToCart(drug); document.getElementById('sales-search').value = ''; dropContainer.innerHTML = ''; };
-        dropContainer.appendChild(item);
+    const { data: matches } = await _supabase.from('inventory').select('*').ilike('name', `%${inputQuery}%`).order('name', {ascending: true});
+    
+    if(matches) {
+        matches.forEach(drug => {
+            const item = document.createElement('div');
+            item.className = 'dropdown-entry-item';
+            item.style.padding = "10px";
+            item.style.cursor = "pointer";
+            item.innerHTML = `💊 ${drug.name} — ₦${drug.selling_price.toFixed(2)} (${drug.quantity} left)`;
+            item.onclick = () => { addItemToCart(drug); document.getElementById('sales-search').value = ''; dropContainer.innerHTML = ''; };
+            dropContainer.appendChild(item);
+        });
     }
-    stmt.free();
 }
+
+async function loadViewDrugPage(id) {
+    const { data: drug } = await _supabase.from('inventory').select('*').eq('id', id).single();
+    if (!drug) return;
+    document.getElementById('view-field-name').value = drug.name;
+    document.getElementById('view-field-cost').value = `₦${drug.cost_price.toFixed(2)}`;
+    document.getElementById('view-field-selling').value = `₦${drug.selling_price.toFixed(2)}`;
+    document.getElementById('view-field-qty').value = `${drug.quantity} Units`;
+    document.getElementById('view-field-min').value = `${drug.min_quantity} Units`;
+    routeToSubpage('view-drug');
+}
+
+async function loadUpdateDrugPage(id) {
+    const { data: drug } = await _supabase.from('inventory').select('*').eq('id', id).single();
+    if (!drug) return;
+    document.getElementById('update-field-id').value = drug.id;
+    document.getElementById('update-field-name').value = drug.name;
+    document.getElementById('update-field-cost').value = drug.cost_price;
+    document.getElementById('update-field-selling').value = drug.selling_price;
+    document.getElementById('update-field-qty').value = drug.quantity;
+    document.getElementById('update-field-min').value = drug.min_quantity;
+    routeToSubpage('update-drug');
+}
+
+async function loadDeleteDrugPage(id) {
+    const { data: drug } = await _supabase.from('inventory').select('*').eq('id', id).single();
+    if (!drug) return;
+    document.getElementById('delete-field-id').value = drug.id;
+    document.getElementById('delete-display-name').value = drug.name;
+    routeToSubpage('delete-drug');
+}
+
+async function renderDailySalesHistoryPage() {
+    const scrollContainer = document.getElementById('daily-invoices-scroll-area');
+    if (!scrollContainer) return;
+    scrollContainer.innerHTML = '<p style="text-align:center;">Syncing records...</p>';
+    
+    let dailyCashSum = 0, dailyDigitalSum = 0;
+    const todayStart = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
+
+    const { data: sales } = await _supabase.from('sales_history').select('*').gte('sale_timestamp', todayStart).order('id', {ascending: false});
+
+    scrollContainer.innerHTML = '';
+    if(sales) {
+        sales.forEach(sale => {
+            dailyCashSum += sale.cash_paid;
+            dailyDigitalSum += sale.card_paid;
+            scrollContainer.innerHTML += `
+                <div class="invoice-block" style="border-bottom:1px solid #cbd5e1; padding: 15px 0;">
+                    <p><strong>Invoice ID: #100${sale.id}</strong> [${new Date(sale.sale_timestamp).toLocaleTimeString()}]</p>
+                    <p>Sold Items: ${sale.items_summary}</p>
+                    <p style="font-weight:600;">Billed: ₦${sale.total_billed.toFixed(2)} (Cash: ₦${sale.cash_paid.toFixed(2)} | Card/Transfer: ₦${sale.card_paid.toFixed(2)})</p>
+                </div>`;
+        });
+    }
+
+    document.getElementById('summary-start-cash').innerText = STARTING_CASH_FLOAT.toLocaleString('en-US', {minimumFractionDigits:2});
+    document.getElementById('summary-cash-sales').innerText = dailyCashSum.toLocaleString('en-US', {minimumFractionDigits:2});
+    document.getElementById('summary-digital-sales').innerText = dailyDigitalSum.toLocaleString('en-US', {minimumFractionDigits:2});
+}
+
+async function renderFinancialDashboardSummary() {
+    const todayStart = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
+    const { data: sales } = await _supabase.from('sales_history').select('cash_paid, card_paid').gte('sale_timestamp', todayStart);
+    
+    let cash = 0, digital = 0;
+    if(sales) {
+        sales.forEach(s => { cash += s.cash_paid; digital += s.card_paid; });
+    }
+    document.getElementById('fin-today-cash').innerText = cash.toFixed(2);
+    document.getElementById('fin-today-digital').innerText = digital.toFixed(2);
+}
+
+async function loadProfitReport(range) {
+    document.getElementById('btn-range-day').classList.remove('active-range-btn');
+    document.getElementById('btn-range-2years').classList.remove('active-range-btn');
+    let query = _supabase.from('sales_history').select('total_profit');
+    let titleLabel = "";
+    
+    if (range === 'day') {
+        document.getElementById('btn-range-day').classList.add('active-range-btn');
+        document.getElementById('custom-range-inputs').classList.add('view-hidden');
+        titleLabel = "Profit For The Day So Far";
+        const todayStart = new Date().toISOString().slice(0, 10) + "T00:00:00.000Z";
+        query = query.gte('sale_timestamp', todayStart);
+    } else if (range === 'range') {
+        document.getElementById('btn-range-2years').classList.add('active-range-btn');
+        const start = document.getElementById('profit-start-date').value + "T00:00:00.000Z";
+        const end = document.getElementById('profit-end-date').value + "T23:59:59.000Z";
+        titleLabel = `Profits From ${document.getElementById('profit-start-date').value} to ${document.getElementById('profit-end-date').value}`;
+        query = query.gte('sale_timestamp', start).lte('sale_timestamp', end);
+    }
+
+    const { data: profits } = await query;
+    let calculatedProfitValue = 0;
+    if(profits) profits.forEach(p => calculatedProfitValue += p.total_profit);
+
+    document.getElementById('profit-title-label').innerText = titleLabel;
+    document.getElementById('fin-profit-value').innerText = calculatedProfitValue.toFixed(2);
+}
+
+// --- STANDARD MENU PORTAL DROPDOWNS & WORKSPACE NAVIGATION ---
 
 function spawnPortalDropdown(event, drugId) {
     event.stopPropagation();
@@ -355,12 +296,17 @@ function spawnPortalDropdown(event, drugId) {
     const portal = document.createElement('div');
     portal.className = 'dropdown-menu-portal';
     portal.id = 'active-portal-dropdown';
+    portal.style.position = 'absolute';
     portal.style.top = `${rect.bottom + window.scrollY}px`;
     portal.style.left = `${rect.left + window.scrollX}px`;
+    portal.style.background = '#ffffff';
+    portal.style.border = '1px solid #cbd5e1';
+    portal.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
+    portal.style.zIndex = '999';
     portal.innerHTML = `
-        <button onclick="loadViewDrugPage(${drugId})">View drug details</button>
-        <button onclick="loadUpdateDrugPage(${drugId})">Update drug details</button>
-        <button onclick="loadDeleteDrugPage(${drugId})">Delete drug records</button>`;
+        <button style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; cursor:pointer;" onclick="loadViewDrugPage(${drugId})">View drug details</button>
+        <button style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; cursor:pointer;" onclick="loadUpdateDrugPage(${drugId})">Update drug details</button>
+        <button style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; cursor:pointer; color:red;" onclick="loadDeleteDrugPage(${drugId})">Delete drug records</button>`;
     document.body.appendChild(portal);
 }
 
@@ -370,46 +316,57 @@ function destroyExistingPortalDropdowns() {
 }
 document.addEventListener('click', destroyExistingPortalDropdowns);
 
-function queryDrugRow(id) {
-    const stmt = azuDatabase.prepare("SELECT * FROM inventory WHERE id = ?");
-    stmt.bind([id]); stmt.step();
-    const res = stmt.getAsObject();
-    stmt.free(); return res;
+function refreshAllViewsData() {
+    renderInventoryTable();
+    renderDailySalesHistoryPage();
+    renderFinancialDashboardSummary();
 }
 
-function loadViewDrugPage(id) {
-    const data = queryDrugRow(id);
-    document.getElementById('view-field-name').value = data.name;
-    document.getElementById('view-field-cost').value = `₦${data.cost_price.toFixed(2)}`;
-    document.getElementById('view-field-selling').value = `₦${data.selling_price.toFixed(2)}`;
-    document.getElementById('view-field-qty').value = `${data.quantity} Units`;
-    document.getElementById('view-field-min').value = `${data.min_quantity} Units`;
-    routeToSubpage('view-drug');
+function switchMainView(targetView) {
+    destroyExistingPortalDropdowns();
+    document.querySelectorAll('.main-view').forEach(view => view.classList.add('view-hidden'));
+    document.querySelectorAll('.navbar .nav-links button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`view-${targetView}`).classList.remove('view-hidden');
+    document.getElementById(`nav-${targetView}`).classList.add('active');
+    if (targetView === 'inventory') routeToSubpage('drug-list');
+    else if (targetView === 'sales') switchSalesSubTab('pos');
+    else if (targetView === 'finance') switchFinanceSubTab('sales');
 }
 
-function loadUpdateDrugPage(id) {
-    const data = queryDrugRow(id);
-    document.getElementById('update-field-id').value = data.id;
-    document.getElementById('update-field-name').value = data.name;
-    document.getElementById('update-field-cost').value = data.cost_price;
-    document.getElementById('update-field-selling').value = data.selling_price;
-    document.getElementById('update-field-qty').value = data.quantity;
-    document.getElementById('update-field-min').value = data.min_quantity;
-    routeToSubpage('update-drug');
+function switchSalesSubTab(subTab) {
+    document.getElementById('sales-subpage-pos').classList.add('view-hidden');
+    document.getElementById('sales-subpage-daily').classList.add('view-hidden');
+    document.getElementById('tab-pos').classList.remove('sub-active');
+    document.getElementById('tab-daily-sales').classList.remove('sub-active');
+    document.getElementById(`sales-subpage-${subTab}`).classList.remove('view-hidden');
+    document.getElementById(`tab-${subTab === 'pos' ? 'pos' : 'daily-sales'}`).classList.add('sub-active');
+    if(subTab === 'pos') setTimeout(() => document.getElementById('sales-search').focus(), 50);
+    else if(subTab === 'daily') renderDailySalesHistoryPage();
 }
 
-function loadDeleteDrugPage(id) {
-    const data = queryDrugRow(id);
-    document.getElementById('delete-field-id').value = data.id;
-    document.getElementById('delete-display-name').value = data.name;
-    routeToSubpage('delete-drug');
+function switchFinanceSubTab(subTab) {
+    document.getElementById('finance-subpage-sales').classList.add('view-hidden');
+    document.getElementById('finance-subpage-profit').classList.add('view-hidden');
+    document.getElementById('tab-fin-sales').classList.remove('sub-active');
+    document.getElementById('tab-fin-profit').classList.remove('sub-active');
+    document.getElementById(`finance-subpage-${subTab}`).classList.remove('view-hidden');
+    document.getElementById(`tab-fin-${subTab}`).classList.add('sub-active');
+    if(subTab === 'sales') renderFinancialDashboardSummary();
+    if(subTab === 'profit') loadProfitReport('day');
+}
+
+function routeToSubpage(subpageId) {
+    destroyExistingPortalDropdowns();
+    ['subpage-drug-list', 'subpage-add-drug', 'subpage-view-drug', 'subpage-update-drug', 'subpage-delete-drug', 'subpage-drugs-to-buy'].forEach(id => document.getElementById(id).classList.add('view-hidden'));
+    document.getElementById(`subpage-${subpageId}`).classList.remove('view-hidden');
+    if (subpageId === 'drug-list') renderInventoryTable();
 }
 
 function addItemToCart(drug) {
-    if(drug.quantity <= 0) return alert("Operation rejected: Selected item is out of stock.");
+    if(drug.quantity <= 0) return alert("Operation rejected: Out of stock.");
     const match = checkoutCart.find(r => r.id === drug.id);
     if(match) {
-        if(match.currentQty >= drug.quantity) return alert("Operation rejected: Max available stock capacity reached.");
+        if(match.currentQty >= drug.quantity) return alert("Operation rejected: Max stock reached.");
         match.currentQty++;
     } else {
         checkoutCart.push({ id: drug.id, name: drug.name, sellingPrice: drug.selling_price, costPrice: drug.cost_price, currentQty: 1, maxLimit: drug.quantity });
@@ -463,42 +420,6 @@ function calculateSplitBalance() {
 
 function closeReceiptWindow() { document.getElementById('receipt-modal').classList.remove('open'); }
 
-function renderDailySalesHistoryPage() {
-    const scrollContainer = document.getElementById('daily-invoices-scroll-area');
-    scrollContainer.innerHTML = '';
-    let dailyCashSum = 0, dailyDigitalSum = 0;
-    const todayDateString = new Date().toISOString().slice(0, 10);
-
-    const stmt = azuDatabase.prepare("SELECT * FROM sales_history WHERE sale_timestamp LIKE ? ORDER BY id DESC");
-    stmt.bind([`${todayDateString}%`]);
-
-    while(stmt.step()) {
-        const sale = stmt.getAsObject();
-        dailyCashSum += sale.cash_paid;
-        dailyDigitalSum += sale.card_paid;
-        scrollContainer.innerHTML += `
-            <div class="invoice-block">
-                <p><strong>Invoice ID: #100${sale.id}</strong> [${sale.sale_timestamp}]</p>
-                <p>Sold Items: ${sale.items_summary}</p>
-                <p style="font-weight:600;">Billed: ₦${sale.total_billed.toFixed(2)} (Cash: ₦${sale.cash_paid.toFixed(2)} | Card/Transfer: ₦${sale.card_paid.toFixed(2)})</p>
-            </div>`;
-    }
-    stmt.free();
-
-    document.getElementById('summary-start-cash').innerText = STARTING_CASH_FLOAT.toLocaleString('en-US', {minimumFractionDigits:2});
-    document.getElementById('summary-cash-sales').innerText = dailyCashSum.toLocaleString('en-US', {minimumFractionDigits:2});
-    document.getElementById('summary-digital-sales').innerText = dailyDigitalSum.toLocaleString('en-US', {minimumFractionDigits:2});
-}
-
-function renderFinancialDashboardSummary() {
-    const todayDateString = new Date().toISOString().slice(0, 10);
-    const res = azuDatabase.exec(`SELECT SUM(cash_paid), SUM(card_paid) FROM sales_history WHERE sale_timestamp LIKE '${todayDateString}%'`);
-    const cash = res[0].values[0][0] || 0;
-    const digital = res[0].values[0][1] || 0;
-    document.getElementById('fin-today-cash').innerText = cash.toFixed(2);
-    document.getElementById('fin-today-digital').innerText = digital.toFixed(2);
-}
-
 function toggleRangeSelectionInputs() {
     const customDiv = document.getElementById('custom-range-inputs');
     customDiv.classList.toggle('view-hidden');
@@ -507,29 +428,4 @@ function toggleRangeSelectionInputs() {
     twoYearsAgo.setFullYear(today.getFullYear() - 2);
     document.getElementById('profit-end-date').value = today.toISOString().slice(0,10);
     document.getElementById('profit-start-date').value = twoYearsAgo.toISOString().slice(0,10);
-}
-
-function loadProfitReport(range) {
-    document.getElementById('btn-range-day').classList.remove('active-range-btn');
-    document.getElementById('btn-range-2years').classList.remove('active-range-btn');
-    let query = "", titleLabel = "";
-    
-    if (range === 'day') {
-        document.getElementById('btn-range-day').classList.add('active-range-btn');
-        document.getElementById('custom-range-inputs').classList.add('view-hidden');
-        titleLabel = "Profit For The Day So Far";
-        const todayStr = new Date().toISOString().slice(0, 10);
-        query = `SELECT SUM(total_profit) FROM sales_history WHERE sale_timestamp LIKE '${todayStr}%'`;
-    } else if (range === 'range') {
-        document.getElementById('btn-range-2years').classList.add('active-range-btn');
-        const start = document.getElementById('profit-start-date').value + " 00:00:00";
-        const end = document.getElementById('profit-end-date').value + " 23:59:59";
-        titleLabel = `Profits From ${document.getElementById('profit-start-date').value} to ${document.getElementById('profit-end-date').value}`;
-        query = `SELECT SUM(total_profit) FROM sales_history WHERE sale_timestamp >= '${start}' AND sale_timestamp <= '${end}'`;
-    }
-
-    const res = azuDatabase.exec(query);
-    const calculatedProfitValue = (res[0] && res[0].values[0][0]) ? res[0].values[0][0] : 0;
-    document.getElementById('profit-title-label').innerText = titleLabel;
-    document.getElementById('fin-profit-value').innerText = calculatedProfitValue.toFixed(2);
 }
