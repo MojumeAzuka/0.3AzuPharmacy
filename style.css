@@ -1,0 +1,122 @@
+:root {
+    --primary-color: #0f766e;
+    --primary-accent: #14b8a6;
+    --bg-color: #f8fafc;
+    --card-background: #ffffff;
+    --text-color: #1e293b;
+    --danger-color: #ef4444;
+    --success-color: #22c55e;
+    --border-line: #e2e8f0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+body { background-color: var(--bg-color); color: var(--text-color); padding-bottom: 60px; }
+.view-hidden { display: none !important; }
+
+/* Main Navigation Bar Layout rules */
+.navbar {
+    background-color: var(--primary-color);
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    position: sticky;
+    top: 0; z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.nav-logo { font-size: 1.4rem; font-weight: 700; }
+.nav-links button {
+    background: none; border: none; color: #ccfbf1;
+    padding: 10px 18px; font-size: 1rem; font-weight: 600; cursor: pointer; border-radius: 6px;
+}
+.nav-links button.active, .nav-links button:hover { background-color: rgba(255,255,255,0.15); color: white; }
+
+/* Secondary Tabs Layouts */
+.sub-tab-nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid var(--border-line); padding-bottom: 8px; }
+.sub-tab-nav button {
+    background: none; border: none; padding: 8px 16px; font-weight: 600; font-size: 0.95rem; color: #64748b; cursor: pointer; border-radius: 4px;
+}
+.sub-tab-nav button.sub-active { background-color: #ccfbf1; color: var(--primary-color); }
+
+.container { max-width: 1200px; margin: 25px auto; padding: 0 15px; }
+.card { background: var(--card-background); border-radius: 10px; padding: 22px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); margin-bottom: 25px; }
+h2 { margin-bottom: 18px; color: var(--primary-color); font-size: 1.35rem; }
+
+/* Typography styling for specific headings */
+.heading-search-inventory { font-size: 1.8rem; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+.heading-search-drug { font-size: 1.1rem; font-weight: 700; color: #475569; margin-bottom: 15px; }
+
+/* Forms input structure rules */
+.form-group { margin-bottom: 18px; position: relative; }
+label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: #475569; }
+input, select { width: 100%; padding: 12px; border: 1px solid var(--border-line); border-radius: 8px; font-size: 1rem; background-color: #ffffff; color: var(--text-color); outline: none; }
+input[readonly] { background-color: #f1f5f9; color: #64748b; cursor: not-allowed; }
+.form-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+@media (min-width: 550px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+
+/* App UI Button Palette kit */
+.btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; text-align: center; display: inline-block; }
+.btn-primary { background: var(--primary-color); color: white; }
+.btn-success { background: var(--success-color); color: white; }
+.btn-accent { background: var(--primary-accent); color: white; }
+.btn-secondary { background: var(--border-line); color: var(--text-color); }
+.btn-secondary.active-range-btn { background: var(--primary-accent); color: white; }
+.btn-danger { background: var(--danger-color); color: white; }
+.btn-block { width: 100%; display: block; }
+
+/* Grid Table layout engine */
+.inventory-header-actions { margin-bottom: 20px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); border: 1px solid var(--border-line); }
+.search-box-wrapper { max-width: 100%; }
+
+.table-container { width: 100%; overflow-x: auto; overflow-y: auto; max-height: 600px; border: 1px solid var(--border-line); border-radius: 8px; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
+th, td { padding: 14px 16px; border-bottom: 1px solid var(--border-line); }
+th { background-color: #f1f5f9; font-weight: 600; color: #334155; position: sticky; top: 0; z-index: 10; }
+
+/* Bright red notification badge */
+.badge-danger-alert { color: var(--danger-color); font-weight: 800; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
+
+/* Context Dropdown Layer */
+.drug-name-click { color: var(--primary-color); cursor: pointer; font-weight: bold; position: relative; display: inline-block; text-decoration: underline; }
+.dropdown-menu-portal {
+    position: absolute; background: white; border: 1px solid var(--border-line);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15); border-radius: 8px; z-index: 5000;
+    width: 180px; display: flex; flex-direction: column; padding: 6px 0;
+}
+.dropdown-menu-portal button {
+    background: none; border: none; text-align: left; padding: 10px 16px;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer; color: var(--text-color); width: 100%;
+}
+.dropdown-menu-portal button:hover { background-color: #ccfbf1; color: var(--primary-color); }
+
+/* Point of Sale layout: Switches priority based on view scale changes */
+.sales-grid { display: grid; grid-template-columns: 1fr; gap: 25px; }
+@media (min-width: 850px) { .sales-grid { grid-template-columns: 4fr 5fr; } }
+
+.search-dropdown-box { position: absolute; width: 100%; background: white; border: 1px solid var(--border-line); max-height: 240px; overflow-y: auto; z-index: 100; border-radius: 0 0 8px 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.dropdown-entry-item { padding: 12px; cursor: pointer; border-bottom: 1px solid var(--bg-color); font-weight: 600; }
+.dropdown-entry-item:hover { background-color: #e2fbf7; color: var(--primary-color); }
+
+/* Strict 4/5 vs 1/5 Sales History panel setup */
+.sales-day-layout { display: flex; flex-direction: column; height: calc(100vh - 180px); min-height: 580px; gap: 15px; }
+.sales-day-list { height: 80%; background: white; border-radius: 10px; padding: 22px; overflow-y: auto; border: 1px solid var(--border-line); }
+.sales-day-summary-bar { height: 20%; background: white; border-radius: 10px; padding: 15px; border: 1px solid var(--border-line); display: flex; justify-content: space-around; align-items: center; }
+.summary-portion { text-align: center; }
+.summary-value { display: block; font-size: 1.4rem; font-weight: 800; margin-top: 5px; }
+
+/* Structural element dividers separating invoices */
+.invoice-block { border-bottom: 2px solid var(--border-line); padding-bottom: 18px; margin-bottom: 18px; background: #f8fafc; padding: 15px; border-radius: 6px; }
+
+/* Modals backdrop layer rules */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6); display: flex; justify-content: center; align-items: center; z-index: 10000; opacity: 0; pointer-events: none; transition: opacity 0.15s ease-out; }
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.receipt-layout { background: white; padding: 24px; border-radius: 8px; width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+.receipt-paper-view { font-family: monospace; color: black; line-height: 1.4; }
+
+.grid-three-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.card-summary-stat { text-align: center; padding: 30px 20px; }
+.stat-large { font-size: 2.2rem; font-weight: 800; margin-top: 10px; }
+.action-footer-buttons { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.text-success { color: var(--success-color); }
+.text-accent { color: var(--primary-accent); }
