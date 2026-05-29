@@ -46,10 +46,10 @@ async function executeUpdateDrug(event) {
     const id = document.getElementById('update-field-id').value;
     const payload = {
         name: document.getElementById('update-field-name').value,
-        cost_price: parseFloat(document.getElementById('update-field-cost').value),
-        selling_price: parseFloat(document.getElementById('update-field-selling').value),
-        quantity: parseInt(document.getElementById('update-field-qty').value),
-        min_quantity: parseInt(document.getElementById('update-field-min').value)
+        cost_price: parseFloat(document.getElementById('add-field-cost').value),
+        selling_price: parseFloat(document.getElementById('add-field-selling').value),
+        quantity: parseInt(document.getElementById('add-field-qty').value),
+        min_quantity: parseInt(document.getElementById('add-field-min').value)
     };
 
     const { error } = await _supabase.from('inventory').update(payload).eq('id', id);
@@ -151,7 +151,7 @@ async function loadDrugsToBuyPage() {
     const tbody = document.getElementById('procurement-table-body');
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Checking inventories...</td></tr>';
     
-    // Fetch all records from the inventory table
+    // Fetch all records cleanly from the inventory table snapshot
     const { data: allItems, error } = await _supabase.from('inventory').select('*');
     
     if (error) {
@@ -160,7 +160,7 @@ async function loadDrugsToBuyPage() {
         return;
     }
 
-    // Filter down to items where current quantity is strictly less than the minimum threshold
+    // Securely check column metrics down inside the local machine context
     const filtered = allItems ? allItems.filter(d => d.quantity < d.min_quantity) : [];
 
     tbody.innerHTML = '';
@@ -337,7 +337,6 @@ function refreshAllViewsData() {
     renderFinancialDashboardSummary();
 }
 
-// Ensure the application can read the properties accurately
 function switchMainView(targetView) {
     destroyExistingPortalDropdowns();
     document.querySelectorAll('.main-view').forEach(view => view.classList.add('view-hidden'));
