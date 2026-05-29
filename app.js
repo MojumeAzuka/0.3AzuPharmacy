@@ -1,7 +1,16 @@
 // Paste your Supabase credentials here
-const SUPABASE_URL = "https://jziyplltccxlvjltlbkz.supabase.co/rest/v1"; 
+let SUPABASE_URL = "https://jziyplltccxlvjltlbkz.supabase.co"; 
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6aXlwbGx0Y2N4bHZqbHRsYmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NzkyMTAsImV4cCI6MjA5NTU1NTIxMH0.IC8SEyV7M2c097ZYGYIvmVc0-GFt1mLslIHCt0G56Tk";
 
+// SELF-CORRECTING GUARD: Strips out any extra "/rest/v1" or trailing slashes to stop the invalid path error
+if (SUPABASE_URL.endsWith("/rest/v1")) {
+    SUPABASE_URL = SUPABASE_URL.replace("/rest/v1", "");
+}
+if (SUPABASE_URL.endsWith("/")) {
+    SUPABASE_URL = SUPABASE_URL.slice(0, -1);
+}
+
+// Initialize the cloud driver safely with the cleaned URL
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let checkoutCart = [];
@@ -322,6 +331,7 @@ function refreshAllViewsData() {
     renderFinancialDashboardSummary();
 }
 
+// Ensure the application can read the properties accurately
 function switchMainView(targetView) {
     destroyExistingPortalDropdowns();
     document.querySelectorAll('.main-view').forEach(view => view.classList.add('view-hidden'));
