@@ -2,42 +2,187 @@
 let SUPABASE_URL = "https://jziyplltccxlvjltlbkz.supabase.co"; 
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6aXlwbGx0Y2N4bHZqbHRsYmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NzkyMTAsImV4cCI6MjA5NTU1NTIxMH0.IC8SEyV7M2c097ZYGYIvmVc0-GFt1mLslIHCt0G56Tk";
 
-// SELF-CORRECTING GUARD: Strips out any extra "/rest/v1" or trailing slashes to stop the invalid path error
-if (SUPABASE_URL.endsWith("/rest/v1")) {
-    SUPABASE_URL = SUPABASE_URL.replace("/rest/v1", "");
-}
-if (SUPABASE_URL.endsWith("/")) {
-    SUPABASE_URL = SUPABASE_URL.slice(0, -1);
-}
+if (SUPABASE_URL.endsWith("/rest/v1")) SUPABASE_URL = SUPABASE_URL.replace("/rest/v1", "");
+if (SUPABASE_URL.endsWith("/")) SUPABASE_URL = SUPABASE_URL.slice(0, -1);
 
-// Initialize the cloud driver safely with the cleaned URL
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let checkoutCart = [];
 const STARTING_CASH_FLOAT = 50000.00;
 
-// Initialize app data from cloud database instances instantly on app mount
 document.addEventListener("DOMContentLoaded", () => {
     refreshAllViewsData();
+    populateDropdownSelectMenus();
     setTimeout(() => { if(document.getElementById('sales-search')) document.getElementById('sales-search').focus(); }, 100);
 });
 
-// --- CLOUD WRITE AND RE-MUTATION LAYERS ---
+// --- MENU SELECT DROPDOWN SYNC FOR BATCH STOCKING ---
+async function populateDropdownSelectMenus() {
+    const { data: sups } = await _supabase.from('suppliers').select('*').order('supplier_name', {ascending:true});
+    const { data: drugs } = await _supabase.from('inventory').select('*').order('name', {ascending:true});
+    
+    const fields = ['stock-intake-supplier-id', 'add-field-supplier'];
+    fields.forEach(fieldId => {
+        const elem = document.getElementById(fieldId);
+        if(elem) {
+            elem.innerHTML = '<option value="">-- Choose Supplier --</option>';
+            if(sups) sups.forEach(s => elem.innerHTML += `<option value="${s.id}">${s.company_name} (${s.supplier_name})</option>`);
+        }
+    });
 
+    const intakeDrugSelect = document.getElementById('stock-intake-drug-id');
+    if(intakeDrugSelect) {
+        intakeDrugSelect.innerHTML = '<option value="">-- Select Target Drug --</option>';
+        if(drugs) drugs.forEach(d => intakeDrugSelect.innerHTML += `<option value="${d.id}">${d.name}</option>`);
+    }
+}
+
+// --- NEW FEATURE LAYERS: SUPPLIERS DIRECTORY ---
+function openAddSupplierForm() {
+    document.getElementById('supplier-creation-mini-card').classList.remove('view-hidden');
+}
+
+async function executeRegisterSupplier() {
+    const payload = {
+        supplier_name: document.getElementById('sup-reg-name').value,
+        company_name: document.getElementById('sup-reg-company').value,
+        phone_number: document.getElementById('sup-reg-phone').value
+    };
+    if(!payload.supplier_name || !payload.company_name) return alert("Please complete form details.");
+
+    const { error } = await _supabase.from('suppliers').insert([payload]);
+    if(error) return alert("Supplier save failed: " + error.message);
+    
+    document.getElementById('sup-reg-name').value = '';
+    document.getElementById('sup-reg-company').value = '';
+    document.getElementById('sup-reg-phone').value = '';
+    document.getElementById('supplier-creation-mini-card').classList.add('view-hidden');
+    
+    populateDropdownSelectMenus();
+    renderSuppliersTable();
+}
+
+async function renderSuppliersTable() {
+    const tbody = document.getElementById('suppliers-main-table-body');
+    if(!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="3">Syncing Directory...</td></tr>';
+    
+    const { data: suppliers } = await _supabase.from('suppliers').select('*').order('company_name', {ascending:true});
+    tbody.innerHTML = '';
+    if(suppliers) {
+        suppliers.forEach(s => {
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${s.supplier_name}</strong></td>
+                    <td>${s.company_name}</td>
+                    <td><a href="tel:${s.phone_number}">${s.phone_number}</a></td>
+                </tr>`;
+        });
+    }
+}
+
+async function viewSupplierSheetCard(supplierId) {
+    if(!supplierId) return alert("No assigned corporate supplier found on this product batch.");
+    const { data: s } = await _supabase.from('suppliers').select('*').eq('id', supplierId).single();
+    if(!s) return;
+    
+    document.getElementById('card-sup-name').value = s.supplier_name;
+    document.getElementById('card-sup-company').value = s.company_name;
+    document.getElementById('card-sup-phone').value = s.phone_number;
+    routeToSubpage('view-supplier');
+}
+
+// --- NEW FEATURE LAYERS: STOCK BATCH INTAKES ---
+async function executeStockBatchIntake(event) {
+    event.preventDefault();
+    const drugId = document.getElementById('stock-intake-drug-id').value;
+    const payload = {
+        cost_price: parseFloat(document.getElementById('stock-intake-cost').value),
+        selling_price: parseFloat(document.getElementById('stock-intake-selling').value),
+        quantity: parseInt(document.getElementById('stock-intake-qty').value),
+        min_quantity: parseInt(document.getElementById('stock-intake-min').value),
+        supplier_id: parseInt(document.getElementById('stock-intake-supplier-id').value)
+    };
+
+    const { error } = await _supabase.from('inventory').update(payload).eq('id', drugId);
+    if(error) return alert("Intake process aborted: " + error.message);
+
+    document.getElementById('add-stock-batch-form').reset();
+    routeToSubpage('drug-list');
+}
+
+// --- NEW FEATURE LAYERS: MODIFICATION CONTROL LOGIC ---
+function openModifyInvoiceWindow(saleId, currentSummary, totalBilled) {
+    document.getElementById('modify-invoice-id').value = saleId;
+    document.getElementById('modify-invoice-summary').value = currentSummary;
+    document.getElementById('modify-invoice-total').value = totalBilled;
+    document.getElementById('modify-invoice-notes').value = '';
+    document.getElementById('modify-invoice-modal').classList.add('open');
+}
+
+function closeModifyInvoiceModal() {
+    document.getElementById('modify-invoice-modal').classList.remove('open');
+}
+
+async function executeInvoiceAdjustmentSubmit() {
+    const saleId = document.getElementById('modify-invoice-id').value;
+    const adjustNotes = document.getElementById('modify-invoice-notes').value;
+    const adjustedTotal = parseFloat(document.getElementById('modify-invoice-total').value);
+
+    if(!adjustNotes) return alert("Modification log tracks audit histories. A reason notes string is required.");
+
+    // 1. Update the Invoice context variables inside sales history layer
+    const { error: patchError } = await _supabase.from('sales_history')
+        .update({ total_billed: adjustedTotal })
+        .eq('id', saleId);
+    if(patchError) return alert("Patch failed: " + patchError.message);
+
+    // 2. Append transaction snapshot footprint inside the auditing table
+    await _supabase.from('sales_modification_logs').insert([{ sale_id: parseInt(saleId), modification_notes: adjustNotes }]);
+
+    closeModifyInvoiceModal();
+    refreshAllViewsData();
+}
+
+async function renderModificationLogsTable() {
+    const tbody = document.getElementById('modification-logs-table-body');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    
+    const { data: logs } = await _supabase.from('sales_modification_logs').select('*, sales_history(items_summary)').order('id', {ascending:false});
+    if(logs) {
+        logs.forEach(log => {
+            tbody.innerHTML += `
+                <tr>
+                    <td style="font-size:0.85rem; color:#64748b;">${new Date(log.adjusted_at).toLocaleString()}</td>
+                    <td><strong>#100${log.sale_id}</strong></td>
+                    <td>
+                        <div style="font-weight:600; color:#b91c1c;">Adjustment Context: ${log.modification_notes}</div>
+                        <div style="font-size:0.8rem; color:#475569; font-family:monospace; background:#f8fafc; padding:4px; margin-top:4px;">Original basket: ${log.sales_history?.items_summary || 'N/A'}</div>
+                    </td>
+                </tr>`;
+        });
+    }
+}
+
+// --- LEGACY WRITE CLOUD WRAPPERS (UPDATED TO INJECT FOREIGN KEY) ---
 async function executeAddDrug(event) {
     event.preventDefault();
+    const supVal = document.getElementById('add-field-supplier').value;
     const payload = {
         name: document.getElementById('add-field-name').value,
         cost_price: parseFloat(document.getElementById('add-field-cost').value),
         selling_price: parseFloat(document.getElementById('add-field-selling').value),
         quantity: parseInt(document.getElementById('add-field-qty').value),
-        min_quantity: parseInt(document.getElementById('add-field-min').value)
+        min_quantity: parseInt(document.getElementById('add-field-min').value),
+        supplier_id: supVal ? parseInt(supVal) : null
     };
 
     const { error } = await _supabase.from('inventory').insert([payload]);
     if (error) return alert("Cloud write error: " + error.message);
 
     document.getElementById('add-drug-form').reset();
+    populateDropdownSelectMenus();
     routeToSubpage('drug-list');
 }
 
@@ -82,31 +227,23 @@ async function processCheckout() {
     let summaryText = '', totalCost = 0;
     let receiptItemsHTML = ''; 
     
-    // Atomically decrement stock numbers for each item purchased in cloud matrix
     for (let item of checkoutCart) {
         const itemLineTotal = item.sellingPrice * item.currentQty;
         totalCost += (item.costPrice * item.currentQty);
         
-        // Structured string format using pipes so history renderer can easily split lines
         summaryText += `${item.name} (${item.currentQty} x ₦${item.sellingPrice.toFixed(2)} = ₦${itemLineTotal.toFixed(2)}) | `;
 
-        // HTML templates targeting instant rendering on checkout print container
         receiptItemsHTML += `
             <div style="display: flex; justify-content: space-between; margin: 4px 0; font-size: 0.9rem;">
                 <span>${item.name} (x${item.currentQty})</span>
                 <span>@ ₦${item.sellingPrice.toFixed(2)} = <strong>₦${itemLineTotal.toFixed(2)}</strong></span>
             </div>`;
 
-        // Direct fallback client-side mutation calculation path bypassing missing RPC configurations
         const newQuantity = item.maxLimit - item.currentQty;
-        const { error } = await _supabase.from('inventory').update({ quantity: newQuantity }).eq('id', item.id);
-        if (error) console.error(`Stock update failed for item ID ${item.id}:`, error.message);
+        await _supabase.from('inventory').update({ quantity: newQuantity }).eq('id', item.id);
     }
 
-    // Clean up trailing pipeline characters from base dataset summary array
-    if (summaryText.endsWith(' | ')) {
-        summaryText = summaryText.slice(0, -3);
-    }
+    if (summaryText.endsWith(' | ')) summaryText = summaryText.slice(0, -3);
 
     const salePayload = {
         items_summary: summaryText,
@@ -120,23 +257,17 @@ async function processCheckout() {
     const { error: invoiceError } = await _supabase.from('sales_history').insert([salePayload]);
     if (invoiceError) return alert("Invoice processing error: " + invoiceError.message);
 
-    // Apply the structural update layout variables inside the instant generation layout viewport
     document.getElementById('receipt-print-data').innerHTML = `
         <div class="receipt-paper-view" style="font-family: monospace; padding: 10px; color: #1e293b;">
             <h3 style="text-align: center; margin-bottom: 4px;">AZU PHARMACY RECEIPT</h3>
             <p style="font-size: 0.8rem; text-align: center; margin-bottom: 12px;">Date: ${new Date().toLocaleString()}</p>
             <div style="border-bottom: 1px dashed #94a3b8; margin-bottom: 8px;"></div>
-            
             ${receiptItemsHTML}
-            
             <div style="border-bottom: 1px dashed #94a3b8; margin-top: 8px; margin-bottom: 8px;"></div>
             <h4 style="display: flex; justify-content: space-between; margin: 6px 0; font-size: 1.1rem;">
                 <span>TOTAL DUE:</span>
                 <span>₦${grandTotal.toFixed(2)}</span>
             </h4>
-            <p style="font-size:0.8rem; color: #64748b; text-align: center; margin-top: 8px;">
-                Cash: ₦${cashComponent.toFixed(2)} | Card: ₦${cardComponent.toFixed(2)}
-            </p>
         </div>`;
     
     document.getElementById('receipt-modal').classList.add('open');
@@ -145,14 +276,13 @@ async function processCheckout() {
     refreshAllViewsData();
 }
 
-// --- CLOUD GLOBAL FETCH READ OPERATIONS ---
-
+// --- CORE FETCH READERS WITH FOREIGN JOIN MAPS ---
 async function renderInventoryTable() {
     const searchFilter = document.getElementById('inventory-search-input').value;
     const tableBody = document.getElementById('inventory-main-table-body');
-    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Syncing global records...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Syncing global records...</td></tr>';
 
-    let query = _supabase.from('inventory').select('*').order('name', { ascending: true });
+    let query = _supabase.from('inventory').select('*, suppliers(id, company_name)').order('name', { ascending: true });
     if (searchFilter) query = query.ilike('name', `%${searchFilter}%`);
 
     const { data: drugs, error } = await query;
@@ -161,12 +291,20 @@ async function renderInventoryTable() {
     tableBody.innerHTML = '';
     drugs.forEach(drug => {
         let restockCellContent = drug.quantity < drug.min_quantity ? `<span class="badge-danger-alert" style="color:red; font-weight:bold;">Restock needed</span>` : '';
+        
+        // Define fallback rendering string state if supplier profiles are detached
+        let supplierLink = '<span>None</span>';
+        if(drug.suppliers) {
+            supplierLink = `<button class="btn" style="padding:2px 6px; font-size:0.8rem; background:#f1f5f9; color:#2563eb; text-decoration:underline;" onclick="viewSupplierSheetCard(${drug.suppliers.id})">${drug.suppliers.company_name}</button>`;
+        }
+
         tableBody.innerHTML += `
             <tr>
                 <td><div class="drug-name-click" style="cursor:pointer; color:#2563eb;" onclick="spawnPortalDropdown(event, ${drug.id})">${drug.name}</div></td>
                 <td>₦${drug.cost_price.toFixed(2)}</td>
                 <td>₦${drug.selling_price.toFixed(2)}</td>
                 <td><strong>${drug.quantity}</strong></td>
+                <td>${supplierLink}</td>
                 <td>${restockCellContent}</td>
             </tr>`;
     });
@@ -175,33 +313,17 @@ async function renderInventoryTable() {
 async function loadDrugsToBuyPage() {
     const tbody = document.getElementById('procurement-table-body');
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Checking inventories...</td></tr>';
-    
-    // Fetch all records cleanly from the inventory table snapshot
     const { data: allItems, error } = await _supabase.from('inventory').select('*');
-    
-    if (error) {
-        console.error("Error fetching inventory for procurement:", error);
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Failed to sync stock data.</td></tr>';
-        return;
-    }
+    if (error) return;
 
-    // Securely check column metrics down inside the local machine context
     const filtered = allItems ? allItems.filter(d => d.quantity < d.min_quantity) : [];
-
     tbody.innerHTML = '';
     if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#64748b;">All stocks healthy!</td></tr>`;
         return routeToSubpage('drugs-to-buy');
     }
-
     filtered.forEach(drug => {
-        tbody.innerHTML += `
-            <tr>
-                <td><strong>${drug.name}</strong></td>
-                <td><span style="color:red; font-weight:bold;">${drug.quantity}</span></td>
-                <td>${drug.min_quantity}</td>
-                <td><input type="number" value="${drug.min_quantity - drug.quantity}" min="1" style="padding:6px;"></td>
-            </tr>`;
+        tbody.innerHTML += `<tr><td><strong>${drug.name}</strong></td><td><span style="color:red; font-weight:bold;">${drug.quantity}</span></td><td>${drug.min_quantity}</td><td><input type="number" value="${drug.min_quantity - drug.quantity}" min="1" style="padding:6px;"></td></tr>`;
     });
     routeToSubpage('drugs-to-buy');
 }
@@ -213,13 +335,11 @@ async function searchSalesCounter() {
     if (!inputQuery) return;
 
     const { data: matches } = await _supabase.from('inventory').select('*').ilike('name', `%${inputQuery}%`).order('name', {ascending: true});
-    
     if(matches) {
         matches.forEach(drug => {
             const item = document.createElement('div');
             item.className = 'dropdown-entry-item';
-            item.style.padding = "10px";
-            item.style.cursor = "pointer";
+            item.style.padding = "10px"; item.style.cursor = "pointer";
             item.innerHTML = `💊 ${drug.name} — ₦${drug.selling_price.toFixed(2)} (${drug.quantity} left)`;
             item.onclick = () => { addItemToCart(drug); document.getElementById('sales-search').value = ''; dropContainer.innerHTML = ''; };
             dropContainer.appendChild(item);
@@ -274,7 +394,6 @@ async function renderDailySalesHistoryPage() {
             dailyCashSum += sale.cash_paid;
             dailyDigitalSum += sale.card_paid;
 
-            // Decouple the summary text array values on the data channel pipeline
             const formattedItemsLines = sale.items_summary
                 .split(' | ')
                 .map(line => `<div style="padding-left: 10px; color: #475569; font-family: monospace; margin: 2px 0;">• ${line}</div>`)
@@ -282,21 +401,14 @@ async function renderDailySalesHistoryPage() {
 
             scrollContainer.innerHTML += `
                 <div class="invoice-block" style="border-bottom:1px solid #cbd5e1; padding: 15px 0;">
-                    <p style="margin-bottom: 6px;">
-                        <strong>Invoice ID: #100${sale.id}</strong> 
-                        <span style="color: #64748b; font-size: 0.85rem;">[${new Date(sale.sale_timestamp).toLocaleTimeString()}]</span>
-                    </p>
-                    
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <p><strong>Invoice ID: #100${sale.id}</strong> <span style="font-size:0.8rem; color:#64748b;">[${new Date(sale.sale_timestamp).toLocaleTimeString()}]</span></p>
+                        <button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="openModifyInvoiceWindow(${sale.id}, \`${sale.items_summary}\`, ${sale.total_billed})">Modify / Returns</button>
+                    </div>
                     <div style="margin: 8px 0; background: #f8fafc; padding: 8px; border-radius: 4px; border-left: 3px solid #cbd5e1;">
                         ${formattedItemsLines}
                     </div>
-                    
-                    <p style="font-weight:600; margin-top: 6px; color: #0f172a; font-size: 1rem;">
-                        Total Cost: <span style="color: #16a34a;">₦${sale.total_billed.toFixed(2)}</span>
-                    </p>
-                    <p style="font-size: 0.8rem; color: #64748b;">
-                        Payment breakdown: Cash: ₦${sale.cash_paid.toFixed(2)} | Card/Transfer: ₦${sale.card_paid.toFixed(2)}
-                    </p>
+                    <p style="font-weight:600;">Billed Total: ₦${sale.total_billed.toFixed(2)}</p>
                 </div>`;
         });
     }
@@ -311,9 +423,7 @@ async function renderFinancialDashboardSummary() {
     const { data: sales } = await _supabase.from('sales_history').select('cash_paid, card_paid').gte('sale_timestamp', todayStart);
     
     let cash = 0, digital = 0;
-    if(sales) {
-        sales.forEach(s => { cash += s.cash_paid; digital += s.card_paid; });
-    }
+    if(sales) sales.forEach(s => { cash += s.cash_paid; digital += s.card_paid; });
     document.getElementById('fin-today-cash').innerText = cash.toFixed(2);
     document.getElementById('fin-today-digital').innerText = digital.toFixed(2);
 }
@@ -347,7 +457,6 @@ async function loadProfitReport(range) {
 }
 
 // --- STANDARD MENU PORTAL DROPDOWNS & WORKSPACE NAVIGATION ---
-
 function spawnPortalDropdown(event, drugId) {
     event.stopPropagation();
     destroyExistingPortalDropdowns();
@@ -358,10 +467,8 @@ function spawnPortalDropdown(event, drugId) {
     portal.style.position = 'absolute';
     portal.style.top = `${rect.bottom + window.scrollY}px`;
     portal.style.left = `${rect.left + window.scrollX}px`;
-    portal.style.background = '#ffffff';
-    portal.style.border = '1px solid #cbd5e1';
-    portal.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
-    portal.style.zIndex = '999';
+    portal.style.background = '#ffffff'; portal.style.border = '1px solid #cbd5e1';
+    portal.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)'; portal.style.zIndex = '999';
     portal.innerHTML = `
         <button style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; cursor:pointer;" onclick="loadViewDrugPage(${drugId})">View drug details</button>
         <button style="display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; cursor:pointer;" onclick="loadUpdateDrugPage(${drugId})">Update drug details</button>
@@ -379,6 +486,8 @@ function refreshAllViewsData() {
     renderInventoryTable();
     renderDailySalesHistoryPage();
     renderFinancialDashboardSummary();
+    renderSuppliersTable();
+    renderModificationLogsTable();
 }
 
 function switchMainView(targetView) {
@@ -395,12 +504,24 @@ function switchMainView(targetView) {
 function switchSalesSubTab(subTab) {
     document.getElementById('sales-subpage-pos').classList.add('view-hidden');
     document.getElementById('sales-subpage-daily').classList.add('view-hidden');
+    document.getElementById('sales-subpage-mod-logs').classList.add('view-hidden');
     document.getElementById('tab-pos').classList.remove('sub-active');
     document.getElementById('tab-daily-sales').classList.remove('sub-active');
-    document.getElementById(`sales-subpage-${subTab}`).classList.remove('view-hidden');
-    document.getElementById(`tab-${subTab === 'pos' ? 'pos' : 'daily-sales'}`).classList.add('sub-active');
-    if(subTab === 'pos') setTimeout(() => document.getElementById('sales-search').focus(), 50);
-    else if(subTab === 'daily') renderDailySalesHistoryPage();
+    document.getElementById('tab-mod-logs').classList.remove('sub-active');
+    
+    if(subTab === 'pos') {
+        document.getElementById('sales-subpage-pos').classList.remove('view-hidden');
+        document.getElementById('tab-pos').classList.add('sub-active');
+        setTimeout(() => document.getElementById('sales-search').focus(), 50);
+    } else if(subTab === 'daily') {
+        document.getElementById('sales-subpage-daily').classList.remove('view-hidden');
+        document.getElementById('tab-daily-sales').classList.add('sub-active');
+        renderDailySalesHistoryPage();
+    } else if(subTab === 'mod-logs') {
+        document.getElementById('sales-subpage-mod-logs').classList.remove('view-hidden');
+        document.getElementById('tab-mod-logs').classList.add('sub-active');
+        renderModificationLogsTable();
+    }
 }
 
 function switchFinanceSubTab(subTab) {
@@ -416,9 +537,19 @@ function switchFinanceSubTab(subTab) {
 
 function routeToSubpage(subpageId) {
     destroyExistingPortalDropdowns();
-    ['subpage-drug-list', 'subpage-add-drug', 'subpage-view-drug', 'subpage-update-drug', 'subpage-delete-drug', 'subpage-drugs-to-buy'].forEach(id => document.getElementById(id).classList.add('view-hidden'));
+    const subpages = [
+        'subpage-drug-list', 'subpage-add-drug', 'subpage-view-drug', 
+        'subpage-update-drug', 'subpage-delete-drug', 'subpage-drugs-to-buy',
+        'subpage-supplier-list', 'subpage-view-supplier', 'subpage-add-new-stock'
+    ];
+    subpages.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.add('view-hidden');
+    });
+    
     document.getElementById(`subpage-${subpageId}`).classList.remove('view-hidden');
     if (subpageId === 'drug-list') renderInventoryTable();
+    else if (subpageId === 'supplier-list') renderSuppliersTable();
 }
 
 function addItemToCart(drug) {

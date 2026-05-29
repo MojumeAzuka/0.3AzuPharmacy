@@ -24,6 +24,7 @@
             <div class="sub-tab-nav">
                 <button id="tab-pos" class="sub-active" onclick="switchSalesSubTab('pos')">Point of Sale</button>
                 <button id="tab-daily-sales" onclick="switchSalesSubTab('daily')">Sales For The Day</button>
+                <button id="tab-mod-logs" onclick="switchSalesSubTab('mod-logs')">Modification Logs</button>
             </div>
 
             <div id="sales-subpage-pos">
@@ -92,6 +93,45 @@
                 </div>
             </div>
 
+            <div id="sales-subpage-mod-logs" class="view-hidden card">
+                <h2>Sales Modification Records</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Invoice Ref</th>
+                                <th>Nature of Adjustments / Items Modified</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modification-logs-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="modify-invoice-modal" class="modal-overlay">
+                <div class="card" style="max-width: 500px; margin: 80px auto; padding: 20px;">
+                    <h2>Modify Customer Invoice Record</h2>
+                    <input type="hidden" id="modify-invoice-id">
+                    <div class="form-group">
+                        <label>Current Summary Breakdown</label>
+                        <textarea id="modify-invoice-summary" rows="3" class="form-control" style="width:100%; font-family:monospace;" readonly></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Nature of Adjustment (Provide Detailed Reasons / Modified Quantities)</label>
+                        <textarea id="modify-invoice-notes" rows="4" class="form-control" style="width:100%;" placeholder="Example: Customer returned 1 Unit of Panadol due to wrong prescription. Updated bill total..." required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Adjusted Invoice Total Billed (₦)</label>
+                        <input type="number" step="0.01" id="modify-invoice-total" style="width:100%; padding:8px;">
+                    </div>
+                    <div class="action-footer-buttons" style="margin-top: 15px;">
+                        <button type="button" class="btn btn-secondary" onclick="closeModifyInvoiceModal()">Cancel</button>
+                        <button type="button" class="btn btn-danger" onclick="executeInvoiceAdjustmentSubmit()">Commit Adjustments</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="receipt-modal" class="modal-overlay">
                 <div class="receipt-layout">
                     <div id="receipt-print-data"></div>
@@ -107,7 +147,11 @@
                         <label style="font-weight: bold; margin-bottom: 6px; display: block;">Search Function</label>
                         <input type="text" id="inventory-search-input" placeholder="Type here to locate drugs instantly..." oninput="renderInventoryTable()">
                     </div>
-                    <button class="btn btn-primary" style="margin-top: 15px;" onclick="routeToSubpage('add-drug')">＋ Add New Drug</button>
+                    <div style="display:flex; gap:10px; align-items:flex-end;">
+                        <button class="btn btn-primary" onclick="routeToSubpage('add-drug')">＋ Add New Drug</button>
+                        <button class="btn btn-accent" onclick="routeToSubpage('add-new-stock')">📦 Add New Stock</button>
+                        <button class="btn btn-secondary" onclick="routeToSubpage('supplier-list')">📋 Suppliers Directory</button>
+                    </div>
                 </div>
 
                 <div class="card">
@@ -120,6 +164,7 @@
                                     <th>Cost Price</th>
                                     <th>Selling Price</th>
                                     <th>Units Available in Inventory</th>
+                                    <th>Current Supplier</th>
                                     <th>Restock needed</th>
                                 </tr>
                             </thead>
@@ -130,6 +175,76 @@
                         <button class="btn btn-accent" onclick="loadDrugsToBuyPage()">📋 Drugs to buy</button>
                     </div>
                 </div>
+            </div>
+
+            <div id="subpage-supplier-list" class="card view-hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2>Registered Suppliers Directory</h2>
+                    <button class="btn btn-success" onclick="openAddSupplierForm()">Create Supplier Profile</button>
+                </div>
+                
+                <div id="supplier-creation-mini-card" class="view-hidden" style="background:#f8fafc; padding:15px; border:1px solid #e2e8f0; margin-bottom:15px; border-radius:4px;">
+                    <h3>New Supplier Information</h3>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Supplier Representative Name</label><input type="text" id="sup-reg-name"></div>
+                        <div class="form-group"><label>Company Corporate Name</label><input type="text" id="sup-reg-company"></div>
+                        <div class="form-group"><label>Active Phone Line</label><input type="text" id="sup-reg-phone"></div>
+                    </div>
+                    <div style="margin-top:10px; display:flex; gap:10px;">
+                        <button type="button" class="btn btn-success" onclick="executeRegisterSupplier()">Save Profile</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('supplier-creation-mini-card').classList.add('view-hidden')">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Supplier Name</th>
+                                <th>Company Name</th>
+                                <th>Phone Number</th>
+                            </tr>
+                        </thead>
+                        <tbody id="suppliers-main-table-body"></tbody>
+                    </table>
+                </div>
+                <div class="action-footer-buttons" style="margin-top:15px;"><button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Go Back</button></div>
+            </div>
+
+            <div id="subpage-view-supplier" class="card view-hidden">
+                <h2>Supplier Information Sheet</h2>
+                <div class="form-group"><label>Supplier Name</label><input type="text" id="card-sup-name" readonly></div>
+                <div class="form-group"><label>Company Name</label><input type="text" id="card-sup-company" readonly></div>
+                <div class="form-group"><label>Phone Number Line</label><input type="text" id="card-sup-phone" readonly></div>
+                <div class="action-footer-buttons"><button type="button" class="btn btn-secondary" onclick="routeToSubpage('supplier-list')">Back to Directory</button></div>
+            </div>
+
+            <div id="subpage-add-new-stock" class="card view-hidden">
+                <h2>Add New Stock Intake Intake</h2>
+                <form id="add-stock-batch-form" onsubmit="executeStockBatchIntake(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Select Drug Item</label>
+                            <select id="stock-intake-drug-id" required style="width:100%; padding:8px; height:38px;"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Assign Supplier</label>
+                            <select id="stock-intake-supplier-id" required style="width:100%; padding:8px; height:38px;"></select>
+                        </div>
+                    </div>
+                    <div class="form-grid" style="margin-top:10px;">
+                        <div class="form-group"><label>Cost Price (₦)</label><input type="number" step="0.01" id="stock-intake-cost" required></div>
+                        <div class="form-group"><label>Selling Price (₦)</label><input type="number" step="0.01" id="stock-intake-selling" required></div>
+                    </div>
+                    <div class="form-grid" style="margin-top:10px;">
+                        <div class="form-group"><label>Units Received / Available</label><input type="number" id="stock-intake-qty" required></div>
+                        <div class="form-group"><label>Minimum Threshold Alert Limit</label><input type="number" id="stock-intake-min" required></div>
+                    </div>
+                    <div class="action-footer-buttons" style="margin-top: 15px;">
+                        <button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Cancel</button>
+                        <button type="submit" class="btn btn-success">Update Inventory Balance</button>
+                    </div>
+                </form>
             </div>
 
             <div id="subpage-drugs-to-buy" class="card view-hidden">
@@ -146,7 +261,7 @@
             </div>
 
             <div id="subpage-add-drug" class="card view-hidden">
-                <h2>Add New Drug</h2>
+                <h2>Add New Drug Form</h2>
                 <form id="add-drug-form" onsubmit="executeAddDrug(event)">
                     <div class="form-group"><label>Name</label><input type="text" id="add-field-name" required></div>
                     <div class="form-grid">
@@ -156,6 +271,10 @@
                     <div class="form-grid">
                         <div class="form-group"><label>Units Available</label><input type="number" id="add-field-qty" required></div>
                         <div class="form-group"><label>Min Threshold</label><input type="number" id="add-field-min" required></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Initial Procurement Supplier</label>
+                        <select id="add-field-supplier" style="width:100%; padding:8px; height:38px;"></select>
                     </div>
                     <div class="action-footer-buttons">
                         <button type="button" class="btn btn-secondary" onclick="routeToSubpage('drug-list')">Go Back</button>
