@@ -151,11 +151,17 @@ async function loadDrugsToBuyPage() {
     const tbody = document.getElementById('procurement-table-body');
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Checking inventories...</td></tr>';
     
-    const { data: lowStockDrugs, error } = await _supabase.from('inventory').select('*').lt('quantity', _supabase.raw('min_quantity'));
+    // Fetch all records from the inventory table
+    const { data: allItems, error } = await _supabase.from('inventory').select('*');
     
-    // Raw filter backup check
-    const { data: allItems } = await _supabase.from('inventory').select('*');
-    const filtered = allItems.filter(d => d.quantity < d.min_quantity);
+    if (error) {
+        console.error("Error fetching inventory for procurement:", error);
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Failed to sync stock data.</td></tr>';
+        return;
+    }
+
+    // Filter down to items where current quantity is strictly less than the minimum threshold
+    const filtered = allItems ? allItems.filter(d => d.quantity < d.min_quantity) : [];
 
     tbody.innerHTML = '';
     if (filtered.length === 0) {
