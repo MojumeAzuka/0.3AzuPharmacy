@@ -46,10 +46,10 @@ async function executeUpdateDrug(event) {
     const id = document.getElementById('update-field-id').value;
     const payload = {
         name: document.getElementById('update-field-name').value,
-        cost_price: parseFloat(document.getElementById('add-field-cost').value),
-        selling_price: parseFloat(document.getElementById('add-field-selling').value),
-        quantity: parseInt(document.getElementById('add-field-qty').value),
-        min_quantity: parseInt(document.getElementById('add-field-min').value)
+        cost_price: parseFloat(document.getElementById('update-field-cost').value),
+        selling_price: parseFloat(document.getElementById('update-field-selling').value),
+        quantity: parseInt(document.getElementById('update-field-qty').value),
+        min_quantity: parseInt(document.getElementById('update-field-min').value)
     };
 
     const { error } = await _supabase.from('inventory').update(payload).eq('id', id);
@@ -80,21 +80,36 @@ async function processCheckout() {
     }
 
     let summaryText = '', totalCost = 0;
+    let receiptItemsHTML = ''; 
     
     // Atomically decrement stock numbers for each item purchased in cloud matrix
     for (let item of checkoutCart) {
-        summaryText += `${item.name} (x${item.currentQty}), `;
+        const itemLineTotal = item.sellingPrice * item.currentQty;
         totalCost += (item.costPrice * item.currentQty);
+        
+        // Structured string format using pipes so history renderer can easily split lines
+        summaryText += `${item.name} (${item.currentQty} x ₦${item.sellingPrice.toFixed(2)} = ₦${itemLineTotal.toFixed(2)}) | `;
 
-        const { error } = await _supabase.rpc('increment', { row_id: item.id, x: -item.currentQty }); 
-        if(error) {
-            // Direct update fallback if RPC helper is missing in project instance
-            await _supabase.from('inventory').update({ quantity: item.maxLimit - item.currentQty }).eq('id', item.id);
-        }
+        // HTML templates targeting instant rendering on checkout print container
+        receiptItemsHTML += `
+            <div style="display: flex; justify-content: space-between; margin: 4px 0; font-size: 0.9rem;">
+                <span>${item.name} (x${item.currentQty})</span>
+                <span>@ ₦${item.sellingPrice.toFixed(2)} = <strong>₦${itemLineTotal.toFixed(2)}</strong></span>
+            </div>`;
+
+        // Direct fallback client-side mutation calculation path bypassing missing RPC configurations
+        const newQuantity = item.maxLimit - item.currentQty;
+        const { error } = await _supabase.from('inventory').update({ quantity: newQuantity }).eq('id', item.id);
+        if (error) console.error(`Stock update failed for item ID ${item.id}:`, error.message);
+    }
+
+    // Clean up trailing pipeline characters from base dataset summary array
+    if (summaryText.endsWith(' | ')) {
+        summaryText = summaryText.slice(0, -3);
     }
 
     const salePayload = {
-        items_summary: summaryText.slice(0, -2),
+        items_summary: summaryText,
         total_billed: grandTotal,
         cash_paid: cashComponent,
         card_paid: cardComponent,
@@ -105,13 +120,23 @@ async function processCheckout() {
     const { error: invoiceError } = await _supabase.from('sales_history').insert([salePayload]);
     if (invoiceError) return alert("Invoice processing error: " + invoiceError.message);
 
+    // Apply the structural update layout variables inside the instant generation layout viewport
     document.getElementById('receipt-print-data').innerHTML = `
-        <div class="receipt-paper-view">
-            <h3>AZU PHARMACY RECEIPT</h3>
-            <p>Date: ${new Date().toLocaleString()}</p>
-            <p>Items: ${summaryText.slice(0, -2)}</p>
-            <h4>Total Paid: ₦${grandTotal.toFixed(2)}</h4>
-            <p style="font-size:0.8rem;">Cash: ₦${cashComponent.toFixed(2)} | Card: ₦${cardComponent.toFixed(2)}</p>
+        <div class="receipt-paper-view" style="font-family: monospace; padding: 10px; color: #1e293b;">
+            <h3 style="text-align: center; margin-bottom: 4px;">AZU PHARMACY RECEIPT</h3>
+            <p style="font-size: 0.8rem; text-align: center; margin-bottom: 12px;">Date: ${new Date().toLocaleString()}</p>
+            <div style="border-bottom: 1px dashed #94a3b8; margin-bottom: 8px;"></div>
+            
+            ${receiptItemsHTML}
+            
+            <div style="border-bottom: 1px dashed #94a3b8; margin-top: 8px; margin-bottom: 8px;"></div>
+            <h4 style="display: flex; justify-content: space-between; margin: 6px 0; font-size: 1.1rem;">
+                <span>TOTAL DUE:</span>
+                <span>₦${grandTotal.toFixed(2)}</span>
+            </h4>
+            <p style="font-size:0.8rem; color: #64748b; text-align: center; margin-top: 8px;">
+                Cash: ₦${cashComponent.toFixed(2)} | Card: ₦${cardComponent.toFixed(2)}
+            </p>
         </div>`;
     
     document.getElementById('receipt-modal').classList.add('open');
@@ -248,11 +273,30 @@ async function renderDailySalesHistoryPage() {
         sales.forEach(sale => {
             dailyCashSum += sale.cash_paid;
             dailyDigitalSum += sale.card_paid;
+
+            // Decouple the summary text array values on the data channel pipeline
+            const formattedItemsLines = sale.items_summary
+                .split(' | ')
+                .map(line => `<div style="padding-left: 10px; color: #475569; font-family: monospace; margin: 2px 0;">• ${line}</div>`)
+                .join('');
+
             scrollContainer.innerHTML += `
                 <div class="invoice-block" style="border-bottom:1px solid #cbd5e1; padding: 15px 0;">
-                    <p><strong>Invoice ID: #100${sale.id}</strong> [${new Date(sale.sale_timestamp).toLocaleTimeString()}]</p>
-                    <p>Sold Items: ${sale.items_summary}</p>
-                    <p style="font-weight:600;">Billed: ₦${sale.total_billed.toFixed(2)} (Cash: ₦${sale.cash_paid.toFixed(2)} | Card/Transfer: ₦${sale.card_paid.toFixed(2)})</p>
+                    <p style="margin-bottom: 6px;">
+                        <strong>Invoice ID: #100${sale.id}</strong> 
+                        <span style="color: #64748b; font-size: 0.85rem;">[${new Date(sale.sale_timestamp).toLocaleTimeString()}]</span>
+                    </p>
+                    
+                    <div style="margin: 8px 0; background: #f8fafc; padding: 8px; border-radius: 4px; border-left: 3px solid #cbd5e1;">
+                        ${formattedItemsLines}
+                    </div>
+                    
+                    <p style="font-weight:600; margin-top: 6px; color: #0f172a; font-size: 1rem;">
+                        Total Cost: <span style="color: #16a34a;">₦${sale.total_billed.toFixed(2)}</span>
+                    </p>
+                    <p style="font-size: 0.8rem; color: #64748b;">
+                        Payment breakdown: Cash: ₦${sale.cash_paid.toFixed(2)} | Card/Transfer: ₦${sale.card_paid.toFixed(2)}
+                    </p>
                 </div>`;
         });
     }
