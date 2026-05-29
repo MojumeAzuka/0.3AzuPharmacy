@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AZU PHARMACY - Cloud Connected</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -111,22 +111,23 @@
             </div>
 
             <div id="modify-invoice-modal" class="modal-overlay">
-                <div class="card" style="max-width: 600px; margin: 50px auto; padding: 20px;">
+                <div class="card" style="max-width: 650px; margin: 0 auto; padding: 20px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
                         <h2>Adjust Invoice #<span id="modify-invoice-display-id"></span></h2>
                         <button class="btn btn-secondary" onclick="closeModifyInvoiceModal()">✕</button>
                     </div>
                     
                     <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 15px;">
-                        Modify item row counts. Quantity adjustments automatically sync with available shelf quantities.
+                        Modify values dynamically. Changes instantly run through the global margin ledger tools and synchronize with the remote cloud database.
                     </p>
 
-                    <div class="table-container" style="max-height: 260px; overflow-y: auto; margin-bottom: 15px;">
+                    <div class="table-container" style="max-height: 280px; overflow-y: auto; margin-bottom: 15px;">
                         <table style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr style="text-align: left; border-bottom: 2px solid #e2e8f0;">
                                     <th style="padding: 8px;">Item Name Description</th>
-                                    <th style="padding: 8px; width: 130px;">Quantity</th>
+                                    <th style="padding: 8px; width: 140px; text-align: center;">Quantity</th>
+                                    <th style="padding: 8px; width: 120px;">Unit Price (₦)</th>
                                     <th style="padding: 8px;">Subtotal</th>
                                     <th style="padding: 8px; text-align: center;">Drop</th>
                                 </tr>
@@ -144,7 +145,7 @@
 
                     <div class="form-group">
                         <label style="font-weight: bold; margin-bottom: 4px; display: block;">Adjustment Audit Reason (Required)</label>
-                        <textarea id="modify-invoice-notes" rows="3" class="form-control" style="width:100%; box-sizing: border-box; padding: 8px;" placeholder="Provide comprehensive details regarding the reason for item replacement or drug return sequence..." required></textarea>
+                        <textarea id="modify-invoice-notes" rows="3" class="form-control" style="width:100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-line); border-radius: 6px;" placeholder="Provide comprehensive details regarding the reason for item replacement or drug return sequence..." required></textarea>
                     </div>
 
                     <div class="action-footer-buttons" style="margin-top: 15px;">
@@ -354,6 +355,7 @@
             <div class="sub-tab-nav">
                 <button id="tab-fin-sales" class="sub-active" onclick="switchFinanceSubTab('sales')">Total Sales Made Today</button>
                 <button id="tab-fin-profit" onclick="switchFinanceSubTab('profit')">Profit Made So Far</button>
+                <button id="tab-fin-maintenance" onclick="switchFinanceSubTab('maintenance')">System Maintenance</button>
             </div>
 
             <div id="finance-subpage-sales">
@@ -377,6 +379,16 @@
                         <h3 id="profit-title-label">Profit For The Day So Far</h3>
                         <p class="stat-large text-success">₦<span id="fin-profit-value">0.00</span></p>
                     </div>
+                </div>
+            </div>
+
+            <div id="finance-subpage-maintenance" class="view-hidden card" style="border: 1px solid var(--danger-color);">
+                <h2 style="color: var(--danger-color);">System Data Purge Zone</h2>
+                <p style="font-size: 0.85rem; margin-bottom: 15px;">Warning: These actions are permanent. Use with caution.</p>
+                <div class="form-grid">
+                    <button class="btn btn-danger" onclick="SystemCleanup.purge('A')">Clear All Sales & Financials</button>
+                    <button class="btn btn-danger" onclick="SystemCleanup.purge('B')">Reset Inventory Quantities</button>
+                    <button class="btn btn-danger" onclick="SystemCleanup.purge('C')">Clear System Activity Logs</button>
                 </div>
             </div>
         </section>

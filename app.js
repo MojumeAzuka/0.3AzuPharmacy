@@ -144,43 +144,78 @@ async function openModifyInvoiceWindow(saleId) {
     document.getElementById('modify-invoice-modal').classList.add('open');
 }
 
+// UPDATED: renderModifyModalItems now uses the new row structure with
+// separate Unit Price input column, stepper buttons, and recalculateModalTotals()
 function renderModifyModalItems() {
     const tbody = document.getElementById('modify-items-list-body');
     tbody.innerHTML = '';
-    let newTotal = 0;
 
     currentModifyingItems.forEach((item, index) => {
-        const itemTotal = item.currentQty * item.price;
-        newTotal += itemTotal;
+        const itemTotal = (item.currentQty * item.price).toFixed(2);
 
         tbody.innerHTML += `
-            <tr style="border-bottom: 1px solid #f1f5f9;">
+            <tr class="invoice-modification-row" data-item-id="${index}">
                 <td style="padding: 8px;"><strong>${item.name}</strong></td>
                 <td style="padding: 8px;">
-                    <div style="display:flex; gap:5px; align-items:center;">
-                        <button class="btn" type="button" style="padding:2px 8px; font-weight:bold;" onclick="updateModQty(${index}, -1)">-</button>
-                        <span style="font-weight:bold; min-width:20px; text-align:center;">${item.currentQty}</span>
-                        <button class="btn" type="button" style="padding:2px 8px; font-weight:bold;" onclick="updateModQty(${index}, 1)">+</button>
+                    <div class="stepper-container">
+                        <button type="button" class="stepper-btn" onclick="decrementInvoiceItemQty(this)">−</button>
+                        <input type="number" class="stepper-input modification-qty" value="${item.currentQty}" min="1" oninput="recalculateModalTotals()">
+                        <button type="button" class="stepper-btn" onclick="incrementInvoiceItemQty(this)">+</button>
                     </div>
                 </td>
-                <td style="padding: 8px;">₦${itemTotal.toFixed(2)}</td>
-                <td style="padding: 8px; text-align:center;">
-                    <button class="btn btn-danger" type="button" style="padding:2px 6px;" onclick="removeModItem(${index})">✕</button>
+                <td style="padding: 8px;">
+                    <input type="number" class="modification-price" style="width: 100%; padding: 6px; border: 1px solid var(--border-line); border-radius: 4px;" value="${item.price.toFixed(2)}" step="0.01" oninput="recalculateModalTotals()">
+                </td>
+                <td style="padding: 8px;">₦<span class="modification-subtotal">${itemTotal}</span></td>
+                <td style="padding: 8px; text-align: center;">
+                    <button class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8rem;" onclick="dropInvoiceItemRow(this)">✕</button>
                 </td>
             </tr>`;
     });
 
-    document.getElementById('modify-new-total').innerText = newTotal.toFixed(2);
+    recalculateModalTotals();
 }
 
-function updateModQty(index, change) {
-    const item = currentModifyingItems[index];
-    if (item.currentQty + change < 1) return removeModItem(index);
-    item.currentQty += change;
-    renderModifyModalItems();
+// NEW: Increment stepper handler
+function incrementInvoiceItemQty(btn) {
+    const input = btn.parentNode.querySelector('.stepper-input');
+    input.value = parseInt(input.value || 0) + 1;
+    recalculateModalTotals();
 }
 
-function removeModItem(index) {
+// NEW: Decrement stepper handler
+function decrementInvoiceItemQty(btn) {
+    const input = btn.parentNode.querySelector('.stepper-input');
+    const current = parseInt(input.value || 0);
+    if (current > parseInt(input.min || 1)) {
+        input.value = current - 1;
+        recalculateModalTotals();
+    }
+}
+
+// NEW: Real-time totals recalculator — reads all active modification rows and updates subtotals + grand total
+function recalculateModalTotals() {
+    let runningSumTotal = 0;
+    
+    // Select all active modification rows in the modal viewport
+    document.querySelectorAll('.invoice-modification-row').forEach(row => {
+        const qty = parseInt(row.querySelector('.modification-qty').value) || 0;
+        const price = parseFloat(row.querySelector('.modification-price').value) || 0.00;
+        const subtotal = qty * price;
+        
+        // Update line display item
+        row.querySelector('.modification-subtotal').textContent = subtotal.toFixed(2);
+        runningSumTotal += subtotal;
+    });
+    
+    // Update the layout calculation block valuation view
+    document.getElementById('modify-new-total').textContent = runningSumTotal.toFixed(2);
+}
+
+// UPDATED: dropInvoiceItemRow now uses the row's DOM position to splice from currentModifyingItems
+function dropInvoiceItemRow(btn) {
+    const row = btn.closest('.invoice-modification-row');
+    const index = parseInt(row.getAttribute('data-item-id'));
     currentModifyingItems.splice(index, 1);
     renderModifyModalItems();
 }
@@ -189,7 +224,16 @@ async function executeInvoiceAdjustmentSubmit() {
     const notes = document.getElementById('modify-invoice-notes').value;
     if (!notes) return alert("Please provide a concise description detailing the nature of adjustments.");
 
-    const newTotal = parseFloat(document.getElementById('modify-new-total').innerText);
+    // Sync currentModifyingItems from live DOM state before committing
+    const rows = document.querySelectorAll('.invoice-modification-row');
+    rows.forEach((row, index) => {
+        if (currentModifyingItems[index]) {
+            currentModifyingItems[index].currentQty = parseInt(row.querySelector('.modification-qty').value) || 1;
+            currentModifyingItems[index].price = parseFloat(row.querySelector('.modification-price').value) || 0;
+        }
+    });
+
+    const newTotal = parseFloat(document.getElementById('modify-new-total').textContent);
     
     // 1. Re-serialize summary string syntax structure
     const newSummary = currentModifyingItems.map(item => 
@@ -762,3 +806,94 @@ function toggleRangeSelectionInputs() {
     document.getElementById('profit-end-date').value = today.toISOString().slice(0,10);
     document.getElementById('profit-start-date').value = twoYearsAgo.toISOString().slice(0,10);
 }
+
+/**
+ * ==========================================================================
+ * SYSTEM MAINTENANCE & DATA PURGE ENGINE
+ * ==========================================================================
+ */
+const SystemCleanup = {
+    async purge(category) {
+        // --- PURGE A: SALES & FINANCIAL RECORDS ---
+        if (category === 'A') {
+            if (!confirm("Are you sure you want to clear all Sales Records and Financial Ledger history? This action is irreversible.")) return;
+            
+            try {
+                // Clear Local Storage backups if you use them
+                localStorage.removeItem('sales_records');
+                localStorage.removeItem('financial_records');
+                
+                // Clear Supabase tables (Matches your cloud active connection)
+                if (typeof supabase !== 'undefined') {
+                    // Adjust table names here if your Supabase tables use different names
+                    await supabase.from('sales').delete().neq('id', 0); 
+                    await supabase.from('financials').delete().neq('id', 0);
+                }
+                
+                alert("Sales and Financial records successfully cleared.");
+                location.reload();
+            } catch (error) {
+                console.error("Purge A failed:", error);
+                alert("Error clearing cloud data. Check console logs.");
+            }
+        }
+
+        // --- PURGE B: DRUGS LEFT IN INVENTORY (QUANTITY ONLY) ---
+        // Preserves drug names, prices, and supplier profiles
+        if (category === 'B') {
+            if (!confirm("Are you sure you want to reset all inventory quantities to 0? Drug names, prices, and suppliers will NOT be deleted.")) return;
+            
+            try {
+                if (typeof supabase !== 'undefined') {
+                    // Updates all stock quantities to 0 on your cloud DB
+                    await supabase.from('drugs').update({ available_units: 0 }).neq('id', 0);
+                }
+                
+                alert("Inventory asset counts reset to 0. Catalog parameters preserved.");
+                location.reload();
+            } catch (error) {
+                console.error("Purge B failed:", error);
+                alert("Error resetting stock levels.");
+            }
+        }
+
+        // --- PURGE C: ACTIVITY / MODIFICATION LOGS ---
+        if (category === 'C') {
+            if (!confirm("Are you sure you want to clear all System Modification Logs?")) return;
+            
+            try {
+                localStorage.removeItem('modification_logs');
+                
+                if (typeof supabase !== 'undefined') {
+                    await supabase.from('modification_logs').delete().neq('id', 0);
+                }
+                
+                alert("Activity audit logs successfully deleted.");
+                location.reload();
+            } catch (error) {
+                console.error("Purge C failed:", error);
+                alert("Error clearing modification records.");
+            }
+        }
+    }
+};
+
+/**
+ * BRIDGE FIX: Update your layout channel toggle to recognize the new sub-tab panel
+ */
+const originalSwitchFinanceSubTab = window.switchFinanceSubTab;
+window.switchFinanceSubTab = function(subId) {
+    // Run your existing tab logic if it exists
+    if (typeof originalSwitchFinanceSubTab === 'function') {
+        originalSwitchFinanceSubTab(subId);
+    } else {
+        // Fallback UI Switch matrix if your original isn't globally exposed yet
+        document.querySelectorAll('#view-finance .sub-tab-nav button').forEach(btn => btn.classList.remove('sub-active'));
+        const targetBtn = document.getElementById(`tab-fin-${subId}`);
+        if (targetBtn) targetBtn.classList.add('sub-active');
+
+        document.querySelectorAll('[id^="finance-subpage-"]').forEach(page => page.classList.add('view-hidden'));
+        const targetPage = document.getElementById(`finance-subpage-${subId}`);
+        if (targetPage) targetPage.classList.remove('view-hidden');
+    }
+};

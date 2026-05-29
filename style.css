@@ -28,6 +28,81 @@ body {
 .view-hidden { display: none !important; }
 
 /* ==========================================================================
+   CROSS-BROWSER NUMERIC RESET & CUSTOM STEPPER ENGINE
+   ==========================================================================
+*/
+/* Strip unstyled native browser spinner arrows globally (Safari, Brave, Chrome, Firefox) */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/*@supports (-moz-appearance: textfield) {
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+}*/
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Custom Stepper Layout UI Components */
+.stepper-container {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-line);
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+    height: 38px; /* High data-density sizing for invoice list environments */
+    width: 120px;
+    margin: 0 auto;
+}
+
+.stepper-btn {
+    background: #f1f5f9;
+    border: none;
+    color: var(--text-color);
+    width: 35px;
+    height: 100%;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s ease;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.stepper-btn:active {
+    background: #ccfbf1;
+    color: var(--primary-color);
+}
+
+.stepper-input {
+    width: 50px;
+    height: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+    text-align: center;
+    padding: 0 !important;
+    font-weight: 600;
+    background: transparent;
+    font-size: 0.95rem !important;
+}
+
+/* Dynamic table container internal inputs adjustments */
+.table-container input.modification-price {
+    height: 38px !important;
+    padding: 6px 8px !important;
+    font-size: 0.95rem !important;
+    border-radius: 6px !important;
+}
+
+/* ==========================================================================
    NAVIGATION ENGINE (Transformed to modern sticky bottom row for iPhone SE)
    ==========================================================================
 */
@@ -235,7 +310,7 @@ input[readonly] { background-color: #f1f5f9; color: #64748b; cursor: not-allowed
 }
 
 table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
-th, td { padding: 10px 12px; border-bottom: 1px solid var(--border-line); font-size: 0.85rem; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--border-line); font-size: 0.85rem; vertical-align: middle; }
 th { background-color: #f1f5f9; font-weight: 600; color: #334155; position: sticky; top: 0; z-index: 10; }
 
 .badge-danger-alert { color: var(--danger-color); font-weight: 800; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; }
