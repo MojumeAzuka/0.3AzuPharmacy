@@ -102,6 +102,7 @@
                                 <th>Timestamp</th>
                                 <th>Invoice Ref</th>
                                 <th>Nature of Adjustments / Items Modified</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="modification-logs-table-body"></tbody>
@@ -110,21 +111,42 @@
             </div>
 
             <div id="modify-invoice-modal" class="modal-overlay">
-                <div class="card" style="max-width: 500px; margin: 80px auto; padding: 20px;">
-                    <h2>Modify Customer Invoice Record</h2>
-                    <input type="hidden" id="modify-invoice-id">
-                    <div class="form-group">
-                        <label>Current Summary Breakdown</label>
-                        <textarea id="modify-invoice-summary" rows="3" class="form-control" style="width:100%; font-family:monospace;" readonly></textarea>
+                <div class="card" style="max-width: 600px; margin: 50px auto; padding: 20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                        <h2>Adjust Invoice #<span id="modify-invoice-display-id"></span></h2>
+                        <button class="btn btn-secondary" onclick="closeModifyInvoiceModal()">✕</button>
                     </div>
-                    <div class="form-group">
-                        <label>Nature of Adjustment (Provide Detailed Reasons / Modified Quantities)</label>
-                        <textarea id="modify-invoice-notes" rows="4" class="form-control" style="width:100%;" placeholder="Example: Customer returned 1 Unit of Panadol due to wrong prescription. Updated bill total..." required></textarea>
+                    
+                    <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 15px;">
+                        Modify item row counts. Quantity adjustments automatically sync with available shelf quantities.
+                    </p>
+
+                    <div class="table-container" style="max-height: 260px; overflow-y: auto; margin-bottom: 15px;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="text-align: left; border-bottom: 2px solid #e2e8f0;">
+                                    <th style="padding: 8px;">Item Name Description</th>
+                                    <th style="padding: 8px; width: 130px;">Quantity</th>
+                                    <th style="padding: 8px;">Subtotal</th>
+                                    <th style="padding: 8px; text-align: center;">Drop</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modify-items-list-body"></tbody>
+                        </table>
                     </div>
-                    <div class="form-group">
-                        <label>Adjusted Invoice Total Billed (₦)</label>
-                        <input type="number" step="0.01" id="modify-invoice-total" style="width:100%; padding:8px;">
+
+                    <div style="background: #f1f5f9; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+                        <div style="display:flex; justify-content:space-between; font-weight: bold; font-size: 1.05rem;">
+                            <span>Recalculated Invoice Valuation:</span>
+                            <span style="color: #16a34a;">₦<span id="modify-new-total">0.00</span></span>
+                        </div>
                     </div>
+
+                    <div class="form-group">
+                        <label style="font-weight: bold; margin-bottom: 4px; display: block;">Adjustment Audit Reason (Required)</label>
+                        <textarea id="modify-invoice-notes" rows="3" class="form-control" style="width:100%; box-sizing: border-box; padding: 8px;" placeholder="Provide comprehensive details regarding the reason for item replacement or drug return sequence..." required></textarea>
+                    </div>
+
                     <div class="action-footer-buttons" style="margin-top: 15px;">
                         <button type="button" class="btn btn-secondary" onclick="closeModifyInvoiceModal()">Cancel</button>
                         <button type="button" class="btn btn-danger" onclick="executeInvoiceAdjustmentSubmit()">Commit Adjustments</button>

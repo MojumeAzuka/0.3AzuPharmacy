@@ -1,4 +1,4 @@
-// Paste your Supabase credentials here
+// Config Matrix Endpoint Settings
 let SUPABASE_URL = "https://jziyplltccxlvjltlbkz.supabase.co"; 
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6aXlwbGx0Y2N4bHZqbHRsYmt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NzkyMTAsImV4cCI6MjA5NTU1NTIxMH0.IC8SEyV7M2c097ZYGYIvmVc0-GFt1mLslIHCt0G56Tk";
 
@@ -8,6 +8,8 @@ if (SUPABASE_URL.endsWith("/")) SUPABASE_URL = SUPABASE_URL.slice(0, -1);
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let checkoutCart = [];
+let currentModifyingItems = []; 
+let originalSaleData = null;
 const STARTING_CASH_FLOAT = 50000.00;
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -37,7 +39,7 @@ async function populateDropdownSelectMenus() {
     }
 }
 
-// --- NEW FEATURE LAYERS: SUPPLIERS DIRECTORY ---
+// --- SUPPLIERS DIRECTORY DOM OPERATIONS ---
 function openAddSupplierForm() {
     document.getElementById('supplier-creation-mini-card').classList.remove('view-hidden');
 }
@@ -48,7 +50,7 @@ async function executeRegisterSupplier() {
         company_name: document.getElementById('sup-reg-company').value,
         phone_number: document.getElementById('sup-reg-phone').value
     };
-    if(!payload.supplier_name || !payload.company_name) return alert("Please complete form details.");
+    if(!payload.supplier_name || !payload.company_name || !payload.phone_number) return alert("Please complete form details.");
 
     const { error } = await _supabase.from('suppliers').insert([payload]);
     if(error) return alert("Supplier save failed: " + error.message);
@@ -84,7 +86,7 @@ async function renderSuppliersTable() {
 async function viewSupplierSheetCard(supplierId) {
     if(!supplierId) return alert("No assigned corporate supplier found on this product batch.");
     const { data: s } = await _supabase.from('suppliers').select('*').eq('id', supplierId).single();
-    if(!s) return;
+    if(!s) return alert("Supplier profiling record not found.");
     
     document.getElementById('card-sup-name').value = s.supplier_name;
     document.getElementById('card-sup-company').value = s.company_name;
@@ -92,16 +94,20 @@ async function viewSupplierSheetCard(supplierId) {
     routeToSubpage('view-supplier');
 }
 
-// --- NEW FEATURE LAYERS: STOCK BATCH INTAKES ---
+// --- INVENTORY SUPPLY BATCH UPDATER OPERATIONS ---
 async function executeStockBatchIntake(event) {
     event.preventDefault();
     const drugId = document.getElementById('stock-intake-drug-id').value;
+    const sId = document.getElementById('stock-intake-supplier-id').value;
+    
+    if(!drugId || !sId) return alert("Please select a valid drug item and assigned supplier.");
+
     const payload = {
         cost_price: parseFloat(document.getElementById('stock-intake-cost').value),
         selling_price: parseFloat(document.getElementById('stock-intake-selling').value),
         quantity: parseInt(document.getElementById('stock-intake-qty').value),
         min_quantity: parseInt(document.getElementById('stock-intake-min').value),
-        supplier_id: parseInt(document.getElementById('stock-intake-supplier-id').value)
+        supplier_id: parseInt(sId)
     };
 
     const { error } = await _supabase.from('inventory').update(payload).eq('id', drugId);
@@ -111,61 +117,198 @@ async function executeStockBatchIntake(event) {
     routeToSubpage('drug-list');
 }
 
-// --- NEW FEATURE LAYERS: MODIFICATION CONTROL LOGIC ---
-function openModifyInvoiceWindow(saleId, currentSummary, totalBilled) {
-    document.getElementById('modify-invoice-id').value = saleId;
-    document.getElementById('modify-invoice-summary').value = currentSummary;
-    document.getElementById('modify-invoice-total').value = totalBilled;
+// --- GRANULAR INVOICE LINE-ITEM MODIFICATION ARCHITECTURE ---
+async function openModifyInvoiceWindow(saleId) {
+    const { data: sale, error } = await _supabase.from('sales_history').select('*').eq('id', saleId).single();
+    if (error || !sale) return alert("Could not retrieve sale historical reference.");
+
+    originalSaleData = sale;
+    document.getElementById('modify-invoice-display-id').innerText = saleId;
     document.getElementById('modify-invoice-notes').value = '';
+
+    // Parsing string logic pattern match: "Drug A (2 x ₦200 = ₦400) | Drug B (1 x ₦500 = ₦500)"
+    currentModifyingItems = sale.items_summary.split(' | ').map(line => {
+        const name = line.split(' (')[0];
+        const qtyMatch = line.match(/\((\d+) x/);
+        const priceMatch = line.match(/x ₦([\d.]+)/);
+        
+        return {
+            name: name,
+            originalQty: parseInt(qtyMatch[1]),
+            currentQty: parseInt(qtyMatch[1]),
+            price: parseFloat(priceMatch[1])
+        };
+    });
+
+    renderModifyModalItems();
     document.getElementById('modify-invoice-modal').classList.add('open');
+}
+
+function renderModifyModalItems() {
+    const tbody = document.getElementById('modify-items-list-body');
+    tbody.innerHTML = '';
+    let newTotal = 0;
+
+    currentModifyingItems.forEach((item, index) => {
+        const itemTotal = item.currentQty * item.price;
+        newTotal += itemTotal;
+
+        tbody.innerHTML += `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 8px;"><strong>${item.name}</strong></td>
+                <td style="padding: 8px;">
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <button class="btn" type="button" style="padding:2px 8px; font-weight:bold;" onclick="updateModQty(${index}, -1)">-</button>
+                        <span style="font-weight:bold; min-width:20px; text-align:center;">${item.currentQty}</span>
+                        <button class="btn" type="button" style="padding:2px 8px; font-weight:bold;" onclick="updateModQty(${index}, 1)">+</button>
+                    </div>
+                </td>
+                <td style="padding: 8px;">₦${itemTotal.toFixed(2)}</td>
+                <td style="padding: 8px; text-align:center;">
+                    <button class="btn btn-danger" type="button" style="padding:2px 6px;" onclick="removeModItem(${index})">✕</button>
+                </td>
+            </tr>`;
+    });
+
+    document.getElementById('modify-new-total').innerText = newTotal.toFixed(2);
+}
+
+function updateModQty(index, change) {
+    const item = currentModifyingItems[index];
+    if (item.currentQty + change < 1) return removeModItem(index);
+    item.currentQty += change;
+    renderModifyModalItems();
+}
+
+function removeModItem(index) {
+    currentModifyingItems.splice(index, 1);
+    renderModifyModalItems();
+}
+
+async function executeInvoiceAdjustmentSubmit() {
+    const notes = document.getElementById('modify-invoice-notes').value;
+    if (!notes) return alert("Please provide a concise description detailing the nature of adjustments.");
+
+    const newTotal = parseFloat(document.getElementById('modify-new-total').innerText);
+    
+    // 1. Re-serialize summary string syntax structure
+    const newSummary = currentModifyingItems.map(item => 
+        `${item.name} (${item.currentQty} x ₦${item.price.toFixed(2)} = ₦${(item.currentQty * item.price).toFixed(2)})`
+    ).join(' | ') || "No items remaining (All items returned/removed)";
+
+    // 2. Loop changes to balance system shelf totals back using database function RPC wrappers
+    for (const item of currentModifyingItems) {
+        const { data: drug } = await _supabase.from('inventory').select('id, name').eq('name', item.name).single();
+        if (drug) {
+            const origLine = originalSaleData.items_summary.split(' | ').find(l => l.startsWith(item.name));
+            const origQty = origLine ? parseInt(origLine.match(/\((\d+) x/)[1]) : 0;
+            const difference = origQty - item.currentQty; // Positive values indicate stock return
+            
+            if (difference !== 0) {
+                await _supabase.rpc('increment', { row_id: drug.id, x: difference });
+            }
+        }
+    }
+
+    // Capture elements completely purged from invoice list
+    const originalLinesArr = originalSaleData.items_summary.split(' | ');
+    for (const line of originalLinesArr) {
+        const name = line.split(' (')[0];
+        if (!currentModifyingItems.find(i => i.name === name)) {
+            const { data: drug } = await _supabase.from('inventory').select('id').eq('name', name).single();
+            if (drug) {
+                const origQty = parseInt(line.match(/\((\d+) x/)[1]);
+                await _supabase.rpc('increment', { row_id: drug.id, x: origQty });
+            }
+        }
+    }
+
+    // 3. Commit state modifications into Database historical tables
+    const { error: updateError } = await _supabase.from('sales_history').update({
+        items_summary: newSummary,
+        total_billed: newTotal,
+        cash_paid: originalSaleData.cash_paid > 0 ? newTotal : 0,
+        card_paid: originalSaleData.card_paid > 0 ? newTotal : 0,
+        total_profit: (newTotal - originalSaleData.total_cost) // Recalculate profit margins roughly
+    }).eq('id', originalSaleData.id);
+
+    if (updateError) return alert("Update database write failure: " + updateError.message);
+
+    // 4. Create historic logs trace footprint mapping record entries
+    await _supabase.from('sales_modification_logs').insert([{
+        sale_id: originalSaleData.id,
+        modification_notes: notes
+    }]);
+
+    closeModifyInvoiceModal();
+    refreshAllViewsData();
 }
 
 function closeModifyInvoiceModal() {
     document.getElementById('modify-invoice-modal').classList.remove('open');
 }
 
-async function executeInvoiceAdjustmentSubmit() {
-    const saleId = document.getElementById('modify-invoice-id').value;
-    const adjustNotes = document.getElementById('modify-invoice-notes').value;
-    const adjustedTotal = parseFloat(document.getElementById('modify-invoice-total').value);
-
-    if(!adjustNotes) return alert("Modification log tracks audit histories. A reason notes string is required.");
-
-    // 1. Update the Invoice context variables inside sales history layer
-    const { error: patchError } = await _supabase.from('sales_history')
-        .update({ total_billed: adjustedTotal })
-        .eq('id', saleId);
-    if(patchError) return alert("Patch failed: " + patchError.message);
-
-    // 2. Append transaction snapshot footprint inside the auditing table
-    await _supabase.from('sales_modification_logs').insert([{ sale_id: parseInt(saleId), modification_notes: adjustNotes }]);
-
-    closeModifyInvoiceModal();
-    refreshAllViewsData();
-}
-
 async function renderModificationLogsTable() {
     const tbody = document.getElementById('modification-logs-table-body');
     if(!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4">Syncing modifications registry...</td></tr>';
+    
+    const { data: logs } = await _supabase.from('sales_modification_logs').select('*, sales_history(*)').order('id', {ascending:false});
     tbody.innerHTML = '';
     
-    const { data: logs } = await _supabase.from('sales_modification_logs').select('*, sales_history(items_summary)').order('id', {ascending:false});
     if(logs) {
         logs.forEach(log => {
+            if (!log.sales_history) return;
             tbody.innerHTML += `
                 <tr>
                     <td style="font-size:0.85rem; color:#64748b;">${new Date(log.adjusted_at).toLocaleString()}</td>
                     <td><strong>#100${log.sale_id}</strong></td>
                     <td>
-                        <div style="font-weight:600; color:#b91c1c;">Adjustment Context: ${log.modification_notes}</div>
-                        <div style="font-size:0.8rem; color:#475569; font-family:monospace; background:#f8fafc; padding:4px; margin-top:4px;">Original basket: ${log.sales_history?.items_summary || 'N/A'}</div>
+                        <div style="font-weight:700; color:#dc2626;">Log Note: ${log.modification_notes}</div>
+                        <div style="font-size:0.8rem; color:#475569; font-family:monospace; background:#f8fafc; padding:6px; margin-top:4px; border-radius:4px;">
+                            Current State Summary: ${log.sales_history.items_summary}
+                        </div>
+                    </td>
+                    <td>
+                        <button class="btn btn-accent" style="padding:4px 8px; font-size:0.75rem;" onclick="printCorrectedReceipt(${log.sales_history.id})">🖨️ Print Receipt</button>
                     </td>
                 </tr>`;
         });
     }
 }
 
-// --- LEGACY WRITE CLOUD WRAPPERS (UPDATED TO INJECT FOREIGN KEY) ---
+// --- CORRECTED RECEIPT GENERATOR FUNCTION ---
+async function printCorrectedReceipt(saleId) {
+    const { data: sale } = await _supabase.from('sales_history').select('*').eq('id', saleId).single();
+    if (!sale) return alert("Unable to track invoice payload.");
+
+    let receiptItemsHTML = '';
+    sale.items_summary.split(' | ').forEach(line => {
+        if(!line) return;
+        receiptItemsHTML += `
+            <div style="display: flex; justify-content: space-between; margin: 4px 0; font-size: 0.9rem;">
+                <span>${line}</span>
+            </div>`;
+    });
+
+    document.getElementById('receipt-print-data').innerHTML = `
+        <div class="receipt-paper-view" style="font-family: monospace; padding: 10px; color: #1e293b;">
+            <h3 style="text-align: center; margin-bottom: 2px;">AZU PHARMACY</h3>
+            <h5 style="text-align: center; margin-top: 0; color: #dc2626; letter-spacing:1px;">*** AMENDED CORRECTED RECEIPT ***</h5>
+            <p style="font-size: 0.8rem; text-align: center; margin-bottom: 12px;">Ref Invoice: #100${sale.id}<br>Printed: ${new Date().toLocaleString()}</p>
+            <div style="border-bottom: 1px dashed #94a3b8; margin-bottom: 8px;"></div>
+            ${receiptItemsHTML}
+            <div style="border-bottom: 1px dashed #94a3b8; margin-top: 8px; margin-bottom: 8px;"></div>
+            <h4 style="display: flex; justify-content: space-between; margin: 6px 0; font-size: 1.1rem;">
+                <span>ADJUSTED TOTAL:</span>
+                <span>₦${sale.total_billed.toFixed(2)}</span>
+            </h4>
+        </div>`;
+    
+    document.getElementById('receipt-modal').classList.add('open');
+}
+
+// --- LEGACY STOCK CLOUD ENGINE FUNCTIONS ---
 async function executeAddDrug(event) {
     event.preventDefault();
     const supVal = document.getElementById('add-field-supplier').value;
@@ -276,10 +419,10 @@ async function processCheckout() {
     refreshAllViewsData();
 }
 
-// --- CORE FETCH READERS WITH FOREIGN JOIN MAPS ---
 async function renderInventoryTable() {
     const searchFilter = document.getElementById('inventory-search-input').value;
     const tableBody = document.getElementById('inventory-main-table-body');
+    if(!tableBody) return;
     tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Syncing global records...</td></tr>';
 
     let query = _supabase.from('inventory').select('*, suppliers(id, company_name)').order('name', { ascending: true });
@@ -292,15 +435,14 @@ async function renderInventoryTable() {
     drugs.forEach(drug => {
         let restockCellContent = drug.quantity < drug.min_quantity ? `<span class="badge-danger-alert" style="color:red; font-weight:bold;">Restock needed</span>` : '';
         
-        // Define fallback rendering string state if supplier profiles are detached
-        let supplierLink = '<span>None</span>';
+        let supplierLink = '<span style="color:#94a3b8; font-size:0.85rem;">None</span>';
         if(drug.suppliers) {
-            supplierLink = `<button class="btn" style="padding:2px 6px; font-size:0.8rem; background:#f1f5f9; color:#2563eb; text-decoration:underline;" onclick="viewSupplierSheetCard(${drug.suppliers.id})">${drug.suppliers.company_name}</button>`;
+            supplierLink = `<button class="btn" style="padding:2px 6px; font-size:0.8rem; background:#f1f5f9; color:#2563eb; font-weight:bold; border:1px solid #cbd5e1; border-radius:3px; cursor:pointer;" onclick="viewSupplierSheetCard(${drug.suppliers.id})">🏢 ${drug.suppliers.company_name}</button>`;
         }
 
         tableBody.innerHTML += `
             <tr>
-                <td><div class="drug-name-click" style="cursor:pointer; color:#2563eb;" onclick="spawnPortalDropdown(event, ${drug.id})">${drug.name}</div></td>
+                <td><div class="drug-name-click" style="cursor:pointer; color:#2563eb; font-weight:600;" onclick="spawnPortalDropdown(event, ${drug.id})">${drug.name}</div></td>
                 <td>₦${drug.cost_price.toFixed(2)}</td>
                 <td>₦${drug.selling_price.toFixed(2)}</td>
                 <td><strong>${drug.quantity}</strong></td>
@@ -403,7 +545,7 @@ async function renderDailySalesHistoryPage() {
                 <div class="invoice-block" style="border-bottom:1px solid #cbd5e1; padding: 15px 0;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <p><strong>Invoice ID: #100${sale.id}</strong> <span style="font-size:0.8rem; color:#64748b;">[${new Date(sale.sale_timestamp).toLocaleTimeString()}]</span></p>
-                        <button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="openModifyInvoiceWindow(${sale.id}, \`${sale.items_summary}\`, ${sale.total_billed})">Modify / Returns</button>
+                        <button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="openModifyInvoiceWindow(${sale.id})">Modify / Returns</button>
                     </div>
                     <div style="margin: 8px 0; background: #f8fafc; padding: 8px; border-radius: 4px; border-left: 3px solid #cbd5e1;">
                         ${formattedItemsLines}
@@ -456,7 +598,6 @@ async function loadProfitReport(range) {
     document.getElementById('fin-profit-value').innerText = calculatedProfitValue.toFixed(2);
 }
 
-// --- STANDARD MENU PORTAL DROPDOWNS & WORKSPACE NAVIGATION ---
 function spawnPortalDropdown(event, drugId) {
     event.stopPropagation();
     destroyExistingPortalDropdowns();
@@ -566,6 +707,7 @@ function addItemToCart(drug) {
 
 function refreshCartUI() {
     const tbody = document.getElementById('cart-table-body');
+    if(!tbody) return;
     tbody.innerHTML = ''; let runTotal = 0;
     checkoutCart.forEach((item, index) => {
         const total = item.sellingPrice * item.currentQty;
@@ -589,6 +731,7 @@ function toggleSplitPaymentFields() {
     const mode = document.getElementById('payment-mode').value;
     const splitBox = document.getElementById('split-inputs-container');
     const grandTotal = parseFloat(document.getElementById('cart-grand-total').innerText);
+    if(!splitBox) return;
     if (mode === 'Split') {
         splitBox.classList.remove('view-hidden');
         document.getElementById('split-cash-amount').value = (grandTotal / 2).toFixed(2);
